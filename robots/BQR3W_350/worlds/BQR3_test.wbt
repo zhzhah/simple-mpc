@@ -1,0 +1,1504 @@
+#VRML_SIM R2022a utf8
+WorldInfo {
+  basicTimeStep 1
+  FPS 30
+  lineScale 0.2
+  contactProperties [
+    ContactProperties {
+      coulombFriction [
+        5
+      ]
+    }
+  ]
+}
+Viewpoint {
+  orientation -0.2567721918041759 -0.698010164425104 0.6684682878606275 5.885814375854235
+  position -5.716393242637091 11.194254258043964 2.7008991975055685
+}
+Robot {
+  name "robot_draw_traj"
+  controller "draw_force"
+  supervisor TRUE
+}
+Wall {
+  translation 0.52 0.01 -0.01
+  rotation 1 0 0 0
+  size 0.08 2 0.4
+  appearance PBRAppearance {
+    baseColorMap ImageTexture {
+      url [
+        "/home/kangru/Softwares/webots-R2022a/webots-R2022a/projects/default/worlds/textures/red_brick_wall.jpg"
+      ]
+      filtering 5
+    }
+    metalness 0
+    textureTransform TextureTransform {
+    }
+  }
+}
+Wall {
+  translation 1.53 6.29 1.9284e-05
+  rotation 1 0 0 1.5708
+  name "wall(1)"
+  size 0.05 0.4 2
+  appearance Roughcast {
+    colorOverride 0.309804 0.145098 0.333333
+    textureTransform TextureTransform {
+      scale 1 2.4
+    }
+  }
+}
+Wall {
+  translation 2.77 6.33 1.94312e-05
+  rotation 1 0 0 1.5708
+  name "wall(2)"
+  size 0.05 0.4 2
+  appearance Roughcast {
+    colorOverride 0.309804 0.145098 0.333333
+    textureTransform TextureTransform {
+      scale 1 2.4
+    }
+  }
+}
+Wall {
+  translation 4.02 6.39 1.96516e-05
+  rotation 1 0 0 1.5708
+  name "wall(3)"
+  size 0.05 0.4 2
+  appearance Roughcast {
+    colorOverride 0.309804 0.145098 0.333333
+    textureTransform TextureTransform {
+      scale 1 2.4
+    }
+  }
+}
+Transform {
+  translation 0 -4 0.05
+  children [
+    Table {
+      translation 5.78 18.35 -0.999912
+      rotation -6.883899999956893e-07 -3.471299999978263e-06 0.9999999999937381 -1.5707953071795862
+      name "table(1)"
+      size 2.7 2.5 1.2
+    }
+    StraightStairs {
+      translation 1.89 18.32 -0.55
+      rotation 1 0 0 0
+      name "straight stairs(1)"
+      stepSize 0.28 2.5 0.18
+      stepRise 0.07
+      nSteps 10
+      stringerWidth 0.1
+      leftRail []
+      rightRail []
+    }
+  ]
+}
+Solid {
+  translation 4.36223 8.42637 -0.619969
+  rotation 1 0 0 1.5708
+  children [
+    DEF RAMP Group {
+      children [
+        Transform {
+          translation -1.841 0.45 0
+          rotation 0 0 1 0.34906
+          children [
+            Shape {
+              appearance DEF APPEARANCE PBRAppearance {
+                baseColor 0.5 0.5 0.5
+                roughness 0.3
+                metalness 0
+              }
+              geometry Box {
+                size 2 0.1 2
+              }
+            }
+          ]
+        }
+        Transform {
+          translation 0 0.79 0
+          children [
+            Shape {
+              appearance USE APPEARANCE
+              geometry Box {
+                size 1.85 0.1 2
+              }
+            }
+          ]
+        }
+        Transform {
+          translation 1.841 0.45 0
+          rotation 0 0 1 -0.34906
+          children [
+            Shape {
+              appearance USE APPEARANCE
+              geometry Box {
+                size 2 0.1 2
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+  name "ramp 20 degrees"
+  model "ramp 20 degrees"
+  boundingObject USE RAMP
+}
+Solid {
+  translation 1.49223 7.04636 -0.439971
+  rotation 0.5773509358554485 0.5773489358556708 0.5773509358554485 2.0944
+  children [
+    DEF RAMP Group {
+      children [
+        Transform {
+          translation -1.841 0.45 0
+          rotation 0 0 1 0.34906
+          children [
+            Shape {
+              appearance DEF APPEARANCE PBRAppearance {
+                baseColor 0.5 0.5 0.5
+                roughness 0.3
+                metalness 0
+              }
+              geometry Box {
+                size 2 0.1 2
+              }
+            }
+          ]
+        }
+        Transform {
+          translation 0 0.79 0
+          children [
+            Shape {
+              appearance USE APPEARANCE
+              geometry Box {
+                size 1.85 0.1 2
+              }
+            }
+          ]
+        }
+        Transform {
+          translation 1.841 0.45 0
+          rotation 0 0 1 -0.34906
+          children [
+            Shape {
+              appearance USE APPEARANCE
+              geometry Box {
+                size 2 0.1 2
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+  name "ramp 20 degrees(1)"
+  model "ramp 20 degrees"
+  boundingObject USE RAMP
+}
+Ramp30deg {
+  translation 4.36223 9.79637 -2.76961e-05
+  rotation 1 0 0 0
+  name "ramp 30 degrees(1)"
+}
+Solid {
+  translation -3.93779 9.95636 -0.780028
+  rotation 0 0 1 1.5708
+  scale 1.1195 1.1195 1.1195
+  children [
+    DEF RAMP Group {
+      children [
+        Transform {
+          translation -0.999927 0 0.4
+          rotation 0 -1 0 1
+          children [
+            Shape {
+              appearance DEF APPEARANCE PBRAppearance {
+                baseColor 0.5 0.5 0.5
+                roughness 0.3
+                metalness 0
+              }
+              geometry Box {
+                size 2 2 0.1
+              }
+            }
+          ]
+        }
+        Transform {
+          translation 0 0 1.2234
+          children [
+            Shape {
+              appearance USE APPEARANCE
+              geometry Box {
+                size 1 2 0.1
+              }
+            }
+          ]
+        }
+        Transform {
+          translation 1.0053 0 0.400583
+          rotation 0 1 0 1
+          children [
+            Shape {
+              appearance USE APPEARANCE
+              geometry Box {
+                size 2 2 0.1
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+  name "hole"
+  boundingObject USE RAMP
+}
+DEF BQR3_2 Robot {
+  translation 0.988689 10.0597 0.55
+  rotation 0 0 1 1.01503e-06
+  children [
+    Transform {
+      rotation 1 0 0 0
+      children [
+        GPS {
+          children [
+            DEF DRAW_COG Transform {
+            }
+          ]
+          name "GPS"
+        }
+        Accelerometer {
+        }
+        Gyro {
+          children [
+            Shape {
+            }
+          ]
+        }
+        InertialUnit {
+          children [
+            Shape {
+              appearance Appearance {
+                material Material {
+                }
+              }
+              geometry Box {
+                size 0.02 0.02 0.02
+              }
+            }
+          ]
+          name "IMU"
+        }
+      ]
+    }
+    Shape {
+      appearance DEF base_link_material PBRAppearance {
+        baseColor 0 1 1
+        roughness 1
+        metalness 0
+      }
+      geometry DEF base_link Mesh {
+        url [
+          "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/base_link.STL"
+        ]
+      }
+      castShadows FALSE
+    }
+    DEF abd_joint1 HingeJoint {
+      jointParameters HingeJointParameters {
+        anchor 0.244 -0.115 0
+        minStop -0.87
+        maxStop 0.87
+      }
+      device [
+        RotationalMotor {
+          name "abd_joint1"
+          maxTorque 200
+        }
+        PositionSensor {
+          name "abd_sensor1"
+        }
+      ]
+      endPoint Solid {
+        translation 0.244 -0.115 0
+        rotation 1 0 0 0
+        children [
+          Shape {
+            appearance DEF Abd1Link_material PBRAppearance {
+              baseColor 0.89804 0.91765 0.92941
+              roughness 1
+              metalness 0
+            }
+            geometry DEF Abd1Link Mesh {
+              url [
+                "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Abd1Link.STL"
+              ]
+            }
+          }
+          DEF hip_joint1 HingeJoint {
+            jointParameters HingeJointParameters {
+              position 0.785
+              axis 0 1 0
+              anchor 0.056 0.018587 0
+              minStop -3
+              maxStop 3
+            }
+            device [
+              RotationalMotor {
+                name "hip_joint1"
+                minPosition -1.5708
+                maxPosition 3
+                maxTorque 400
+              }
+              PositionSensor {
+                name "hip_sensor1"
+              }
+            ]
+            endPoint Solid {
+              translation 0.056 0.018587 0
+              rotation 0 1 0 0.7850000000000003
+              children [
+                Shape {
+                  appearance DEF Hip1Link_material PBRAppearance {
+                    baseColor 0 0 0
+                    roughness 1
+                    metalness 0
+                  }
+                  geometry DEF Hip1Link Mesh {
+                    url [
+                      "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Hip1Link.STL"
+                    ]
+                  }
+                }
+                DEF knee_joint1 HingeJoint {
+                  jointParameters HingeJointParameters {
+                    position -1.5708
+                    axis 0 1 0
+                    anchor 0 -0.10009 -0.36
+                    minStop -3
+                  }
+                  device [
+                    RotationalMotor {
+                      name "knee_joint1"
+                      maxTorque 400
+                    }
+                    PositionSensor {
+                      name "knee_sensor1"
+                    }
+                  ]
+                  endPoint Solid {
+                    translation 0 -0.10009 -0.36
+                    rotation 0 -1 0 1.5708
+                    children [
+                      DEF touch_sensor3D_1 TouchSensor {
+                        translation -0.007 0 -0.352
+                        rotation -0.018836604147084175 0.03234580712128279 -0.9992992200066397 0.000780147
+                        children [
+                          DEF t1 Shape {
+                            appearance PBRAppearance {
+                              transparency 1
+                              metalness 0
+                            }
+                            geometry Sphere {
+                              radius 0.038
+                              subdivision 3
+                            }
+                          }
+                        ]
+                        name "touch_sensor3D_1"
+                        boundingObject USE t1
+                        physics Physics {
+                        }
+                        type "force-3d"
+                        lookupTable [
+                          0 0 0
+                          50000 50000 0
+                        ]
+                      }
+                      Shape {
+                        appearance DEF Knee1Link_material PBRAppearance {
+                          baseColor 0.666667 0 0
+                          roughness 1
+                          metalness 0
+                        }
+                        geometry DEF Knee1Link Mesh {
+                          url [
+                            "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Knee1Link.STL"
+                          ]
+                        }
+                      }
+                      DEF toe Solid {
+                        translation -0.011 0 -0.352
+                        children [
+                          DEF toe Shape {
+                            appearance DEF toe1link_material PBRAppearance {
+                              baseColor 0.333333 0.341176 0.32549
+                              roughness 1
+                              metalness 0
+                            }
+                            geometry DEF toe1link Mesh {
+                              url [
+                                "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/toe1link.STL"
+                              ]
+                            }
+                          }
+                        ]
+                        name "toe1link"
+                        physics Physics {
+                          density -1
+                          mass 0.10321
+                          centerOfMass [
+                            0.001179 -0.000301 -0.002438
+                          ]
+                          inertiaMatrix [
+                            2.9572e-05 3.5401e-05 2.9167e-05
+                            3.6317e-09 6.7484e-07 -9.1467e-09
+                          ]
+                        }
+                      }
+                    ]
+                    name "Knee1Link"
+                    boundingObject Transform {
+                      translation -0.0235 -0.015 -0.32
+                      children [
+                        Shape {
+                          geometry Mesh {
+                            url [
+                              "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Knee2Link_bounding.STL"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                    physics Physics {
+                      density -1
+                      mass 0.47977
+                      centerOfMass [
+                        0.008835 -0.0003 -0.19075
+                      ]
+                      inertiaMatrix [
+                        0.0081751 0.0082568 0.00016382
+                        -7.5802e-10 0.0007434 7.6506e-09
+                      ]
+                    }
+                  }
+                }
+              ]
+              name "Hip1Link"
+              boundingObject Transform {
+                translation -0.04 -0.1226 -0.376
+                children [
+                  Shape {
+                    geometry Mesh {
+                      url [
+                        "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Hip1Link_bounding.STL"
+                      ]
+                    }
+                  }
+                ]
+              }
+              physics Physics {
+                density -1
+                mass 3.91
+                centerOfMass [
+                  0.000334 -0.068863 -0.092747
+                ]
+                inertiaMatrix [
+                  0.07589007 0.07333267 0.006433041
+                  -4.4756e-05 0.000448473 0.01071601
+                ]
+              }
+            }
+          }
+        ]
+        name "Abd1Link"
+        boundingObject Transform {
+          translation 0.055 0.055 0
+          rotation 1 0 0 1.5709
+          children [
+            Cylinder {
+              height 0.065
+              radius 0.05
+            }
+          ]
+        }
+        physics Physics {
+          density -1
+          mass 1.656
+          centerOfMass [
+            0.05057 0.046892 1e-06
+          ]
+          inertiaMatrix [
+            0.002476692 0.002206021 0.002653852
+            0.000400827 3e-09 -5.9e-08
+          ]
+        }
+      }
+    }
+    DEF abd_joint2 HingeJoint {
+      jointParameters HingeJointParameters {
+        anchor -0.244 -0.115 0
+        minStop -0.87
+        maxStop 0.87
+      }
+      device [
+        RotationalMotor {
+          name "abd_joint2"
+          maxTorque 200
+        }
+        PositionSensor {
+          name "abd_sensor2"
+        }
+      ]
+      endPoint Solid {
+        translation -0.244 -0.115 0
+        rotation 1 0 0 0
+        children [
+          Shape {
+            appearance DEF Abd2Link_material PBRAppearance {
+              baseColor 0.89804 0.91765 0.92941
+              roughness 1
+              metalness 0
+            }
+            geometry DEF Abd2Link Mesh {
+              url [
+                "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Abd2Link.STL"
+              ]
+            }
+          }
+          DEF hip_joint2 HingeJoint {
+            jointParameters HingeJointParameters {
+              position 0.785
+              axis 0 1 0
+              anchor -0.056 0.018587 0
+              minStop -3
+              maxStop 3
+            }
+            device [
+              RotationalMotor {
+                name "hip_joint2"
+                minPosition -1.5708
+                maxPosition 3
+                maxTorque 400
+              }
+              PositionSensor {
+                name "hip_sensor2"
+              }
+            ]
+            endPoint Solid {
+              translation -0.056 0.018587 0
+              rotation 0 1 0 0.7850000000000003
+              children [
+                Shape {
+                  appearance DEF Hip2Link_material PBRAppearance {
+                    baseColor 0 0 0
+                    roughness 1
+                    metalness 0
+                  }
+                  geometry DEF Hip2Link Mesh {
+                    url [
+                      "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Hip2Link.STL"
+                    ]
+                  }
+                }
+                DEF knee_joint2 HingeJoint {
+                  jointParameters HingeJointParameters {
+                    position -1.5708
+                    axis 0 1 0
+                    anchor 0 -0.10009 -0.36
+                    minStop -3
+                  }
+                  device [
+                    RotationalMotor {
+                      name "knee_joint2"
+                      maxTorque 400
+                    }
+                    PositionSensor {
+                      name "knee_sensor2"
+                    }
+                  ]
+                  endPoint Solid {
+                    translation 0 -0.10009 -0.36
+                    rotation 0 -1 0 1.5708
+                    children [
+                      DEF touch_sensor3D_2 TouchSensor {
+                        translation -0.007 0 -0.352
+                        rotation -0.018836604147084175 0.03234580712128279 -0.9992992200066397 0.000780147
+                        children [
+                          DEF t2 Shape {
+                            appearance PBRAppearance {
+                              transparency 1
+                              metalness 0
+                            }
+                            geometry Sphere {
+                              radius 0.038
+                              subdivision 3
+                            }
+                          }
+                        ]
+                        name "touch_sensor3D_2"
+                        boundingObject USE t2
+                        physics Physics {
+                        }
+                        type "force-3d"
+                        lookupTable [
+                          0 0 0
+                          50000 50000 0
+                        ]
+                      }
+                      Shape {
+                        appearance DEF Knee2Link_material PBRAppearance {
+                          baseColor 0.666667 0 0
+                          roughness 1
+                          metalness 0
+                        }
+                        geometry DEF Knee2Link Mesh {
+                          url [
+                            "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Knee2Link.STL"
+                          ]
+                        }
+                      }
+                      Solid {
+                        translation -0.011 0 -0.352
+                        children [
+                          Shape {
+                            appearance DEF toe2Link_material PBRAppearance {
+                              baseColor 0.333333 0.341176 0.32549
+                              roughness 1
+                              metalness 0
+                            }
+                            geometry DEF toe2Link Mesh {
+                              url [
+                                "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/toe2Link.STL"
+                              ]
+                            }
+                          }
+                        ]
+                        name "toe2Link"
+                        physics Physics {
+                          density -1
+                          mass 0.10321
+                          centerOfMass [
+                            0.001179 -0.000301 -0.002438
+                          ]
+                          inertiaMatrix [
+                            2.9572e-05 3.5401e-05 2.9167e-05
+                            3.6261e-09 6.7484e-07 -9.1442e-09
+                          ]
+                        }
+                      }
+                    ]
+                    name "Knee2Link"
+                    boundingObject Transform {
+                      translation -0.0235 -0.015 -0.32
+                      children [
+                        Shape {
+                          geometry Mesh {
+                            url [
+                              "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Knee2Link_bounding.STL"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                    physics Physics {
+                      density -1
+                      mass 0.47977
+                      centerOfMass [
+                        0.008835 -0.0003 -0.19075
+                      ]
+                      inertiaMatrix [
+                        0.0081751 0.0082568 0.00016382
+                        -9.1116e-10 0.00074339 7.2436e-09
+                      ]
+                    }
+                  }
+                }
+              ]
+              name "Hip2Link"
+              boundingObject Transform {
+                translation -0.04 -0.1226 -0.376
+                children [
+                  Shape {
+                    geometry Mesh {
+                      url [
+                        "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Hip1Link_bounding.STL"
+                      ]
+                    }
+                  }
+                ]
+              }
+              physics Physics {
+                density -1
+                mass 3.91
+                centerOfMass [
+                  0.000334 -0.068863 -0.092747
+                ]
+                inertiaMatrix [
+                  0.07589008 0.07333267 0.006643029
+                  -4.4756e-05 0.000448467 0.01071601
+                ]
+              }
+            }
+          }
+        ]
+        name "Abd2Link"
+        boundingObject Transform {
+          translation -0.055 0.055 0
+          rotation 1 0 0 1.5709
+          children [
+            Cylinder {
+              height 0.065
+              radius 0.05
+            }
+          ]
+        }
+        physics Physics {
+          density -1
+          mass 1.656
+          centerOfMass [
+            -0.05057 0.046982 -1e-06
+          ]
+          inertiaMatrix [
+            0.002476692 0.002206021 0.002653852
+            -0.000400827 3e-09 5.9e-08
+          ]
+        }
+      }
+    }
+    DEF abd_joint3 HingeJoint {
+      jointParameters HingeJointParameters {
+        anchor 0.244 0.115 0
+        minStop -0.87
+        maxStop 0.87
+      }
+      device [
+        RotationalMotor {
+          name "abd_joint3"
+          maxTorque 200
+        }
+        PositionSensor {
+          name "abd_sensor3"
+        }
+      ]
+      endPoint Solid {
+        translation 0.244 0.115 0
+        rotation 1 0 0 0
+        children [
+          Shape {
+            appearance DEF Abd3Link_material PBRAppearance {
+              baseColor 0.89804 0.91765 0.92941
+              roughness 1
+              metalness 0
+            }
+            geometry DEF Abd3Link Mesh {
+              url [
+                "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Abd3Link.STL"
+              ]
+            }
+          }
+          DEF hip_joint3 HingeJoint {
+            jointParameters HingeJointParameters {
+              position 0.785
+              axis 0 1 0
+              anchor 0.056 -0.018587 0
+              minStop -3
+              maxStop 3
+            }
+            device [
+              RotationalMotor {
+                name "hip_joint3"
+                minPosition -1.5708
+                maxPosition 3
+                maxTorque 400
+              }
+              PositionSensor {
+                name "hip_sensor3"
+              }
+            ]
+            endPoint Solid {
+              translation 0.056 -0.018587 0
+              rotation 0 1 0 0.7850000000000003
+              children [
+                Shape {
+                  appearance DEF Hip3Link_material PBRAppearance {
+                    baseColor 0 0 0
+                    roughness 1
+                    metalness 0
+                  }
+                  geometry DEF Hip3Link Mesh {
+                    url [
+                      "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Hip3Link.STL"
+                    ]
+                  }
+                }
+                DEF knee_joint3 HingeJoint {
+                  jointParameters HingeJointParameters {
+                    position -1.5708
+                    axis 0 1 0
+                    anchor 0 0.10009 -0.36
+                    minStop -3
+                  }
+                  device [
+                    RotationalMotor {
+                      name "knee_joint3"
+                      maxTorque 400
+                    }
+                    PositionSensor {
+                      name "knee_sensor3"
+                    }
+                  ]
+                  endPoint Solid {
+                    translation 0 0.10009 -0.36
+                    rotation 0 -1 0 1.5708
+                    children [
+                      DEF touch_sensor3D_3 TouchSensor {
+                        translation -0.007 0 -0.352
+                        rotation -0.018836604147084175 0.03234580712128279 -0.9992992200066397 0.000780147
+                        children [
+                          DEF t3 Shape {
+                            appearance PBRAppearance {
+                              transparency 1
+                              metalness 0
+                            }
+                            geometry Sphere {
+                              radius 0.038
+                              subdivision 3
+                            }
+                          }
+                        ]
+                        name "touch_sensor3D_3"
+                        boundingObject USE t3
+                        physics Physics {
+                        }
+                        type "force-3d"
+                        lookupTable [
+                          0 0 0
+                          50000 50000 0
+                        ]
+                      }
+                      Shape {
+                        appearance DEF Knee3Link_material PBRAppearance {
+                          baseColor 0.666667 0 0
+                          roughness 1
+                          metalness 0
+                        }
+                        geometry DEF Knee3Link Mesh {
+                          url [
+                            "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Knee3Link.STL"
+                          ]
+                        }
+                      }
+                      Solid {
+                        translation -0.011 0 -0.352
+                        children [
+                          Shape {
+                            appearance DEF toe3Link_material PBRAppearance {
+                              baseColor 0.333333 0.341176 0.32549
+                              roughness 1
+                              metalness 0
+                            }
+                            geometry DEF toe3Link Mesh {
+                              url [
+                                "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/toe3Link.STL"
+                              ]
+                            }
+                          }
+                        ]
+                        name "toe3Link"
+                        physics Physics {
+                          density -1
+                          mass 0.10321
+                          centerOfMass [
+                            0.001179 9.9e-05 -0.002438
+                          ]
+                          inertiaMatrix [
+                            2.9572e-05 3.5401e-05 2.9167e-05
+                            3.6295e-09 6.7484e-07 -9.1457e-09
+                          ]
+                        }
+                      }
+                    ]
+                    name "Knee3Link"
+                    boundingObject Transform {
+                      translation -0.0235 -0.015 -0.32
+                      children [
+                        Shape {
+                          geometry Mesh {
+                            url [
+                              "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Knee2Link_bounding.STL"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                    physics Physics {
+                      density -1
+                      mass 0.47976
+                      centerOfMass [
+                        0.008835 0.0001 -0.19075
+                      ]
+                      inertiaMatrix [
+                        0.0081751 0.0082568 0.00016382
+                        -5.303e-10 0.00074339 5.0022e-09
+                      ]
+                    }
+                  }
+                }
+              ]
+              name "Hip3Link"
+              boundingObject Transform {
+                translation -0.04 0.0776 -0.376
+                children [
+                  Shape {
+                    geometry Mesh {
+                      url [
+                        "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Hip1Link_bounding.STL"
+                      ]
+                    }
+                    castShadows FALSE
+                  }
+                ]
+              }
+              physics Physics {
+                density -1
+                mass 3.91
+                centerOfMass [
+                  0.000334 0.068863 -0.092747
+                ]
+                inertiaMatrix [
+                  0.07589016 0.07333274 0.006643012
+                  4.4755e-05 0.000448419 -0.01071601
+                ]
+              }
+            }
+          }
+        ]
+        name "Abd3Link"
+        boundingObject Transform {
+          translation 0.055 -0.055 0
+          rotation 1 0 0 1.5709
+          children [
+            Cylinder {
+              height 0.065
+              radius 0.05
+            }
+          ]
+        }
+        physics Physics {
+          density -1
+          mass 1.656
+          centerOfMass [
+            0.05057 -0.046982 -1e-06
+          ]
+          inertiaMatrix [
+            0.002476692 0.002206021 0.002653852
+            -0.000400827 -3e-09 -5.9e-08
+          ]
+        }
+      }
+    }
+    DEF abd_joint4 HingeJoint {
+      jointParameters HingeJointParameters {
+        anchor -0.244 0.115 0
+        minStop -0.87
+        maxStop 0.87
+      }
+      device [
+        RotationalMotor {
+          name "abd_joint4"
+          maxTorque 200
+        }
+        PositionSensor {
+          name "abd_sensor4"
+        }
+      ]
+      endPoint Solid {
+        translation -0.244 0.115 0
+        rotation 1 0 0 0
+        children [
+          Shape {
+            appearance DEF Abd4Link_material PBRAppearance {
+              baseColor 0.89804 0.91765 0.92941
+              roughness 1
+              metalness 0
+            }
+            geometry DEF Abd4Link Mesh {
+              url [
+                "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Abd4Link.STL"
+              ]
+            }
+          }
+          DEF hip_joint4 HingeJoint {
+            jointParameters HingeJointParameters {
+              position 0.785
+              axis 0 1 0
+              anchor -0.056 -0.018588 0
+              minStop -3
+              maxStop 3
+            }
+            device [
+              RotationalMotor {
+                name "hip_joint4"
+                minPosition -1.5708
+                maxPosition 3
+                maxTorque 400
+              }
+              PositionSensor {
+                name "hip_sensor4"
+              }
+            ]
+            endPoint Solid {
+              translation -0.056 -0.018588 0
+              rotation 0 1 0 0.7850000000000003
+              children [
+                Shape {
+                  appearance DEF Hip4Link_material PBRAppearance {
+                    baseColor 0 0 0
+                    roughness 1
+                    metalness 0
+                  }
+                  geometry DEF Hip4Link Mesh {
+                    url [
+                      "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Hip4Link.STL"
+                    ]
+                  }
+                }
+                DEF knee_joint4 HingeJoint {
+                  jointParameters HingeJointParameters {
+                    position -1.5708
+                    axis 0 1 0
+                    anchor 0 0.10009 -0.36
+                    minStop -3
+                  }
+                  device [
+                    RotationalMotor {
+                      name "knee_joint4"
+                      maxTorque 400
+                    }
+                    PositionSensor {
+                      name "knee_sensor4"
+                    }
+                  ]
+                  endPoint Solid {
+                    translation 0 0.10009 -0.36
+                    rotation 0 -1 0 1.5708
+                    children [
+                      DEF touch_sensor3D_4 TouchSensor {
+                        translation -0.007 0 -0.352
+                        rotation -0.018836604147084175 0.03234580712128279 -0.9992992200066397 0.000780147
+                        children [
+                          DEF t4 Shape {
+                            appearance PBRAppearance {
+                              transparency 1
+                              metalness 0
+                            }
+                            geometry Sphere {
+                              radius 0.038
+                              subdivision 3
+                            }
+                          }
+                        ]
+                        name "touch_sensor3D_4"
+                        boundingObject USE t4
+                        physics Physics {
+                        }
+                        type "force-3d"
+                        lookupTable [
+                          0 0 0
+                          50000 50000 0
+                        ]
+                      }
+                      Shape {
+                        appearance DEF Knee4Link_material PBRAppearance {
+                          baseColor 0.666667 0 0
+                          roughness 1
+                          metalness 0
+                        }
+                        geometry DEF Knee4Link Mesh {
+                          url [
+                            "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Knee4Link.STL"
+                          ]
+                        }
+                      }
+                      Solid {
+                        translation -0.011 0 -0.352
+                        children [
+                          Shape {
+                            appearance DEF toe4Link_material PBRAppearance {
+                              baseColor 0.333333 0.341176 0.32549
+                              roughness 1
+                              metalness 0
+                            }
+                            geometry DEF toe4Link Mesh {
+                              url [
+                                "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/toe4Link.STL"
+                              ]
+                            }
+                          }
+                        ]
+                        name "toe4Link"
+                        physics Physics {
+                          density -1
+                          mass 0.10321
+                          centerOfMass [
+                            0.001179 0.000499 -0.002438
+                          ]
+                          inertiaMatrix [
+                            2.9572e-05 3.5401e-05 2.9167e-05
+                            3.6351e-09 6.7483e-07 -9.1482e-09
+                          ]
+                        }
+                      }
+                    ]
+                    name "Knee4Link"
+                    boundingObject Transform {
+                      translation -0.0235 -0.015 -0.32
+                      children [
+                        Shape {
+                          geometry Mesh {
+                            url [
+                              "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Knee2Link_bounding.STL"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                    physics Physics {
+                      density -1
+                      mass 0.47977
+                      centerOfMass [
+                        0.008835 0.0005 -0.19075
+                      ]
+                      inertiaMatrix [
+                        0.0081751 0.0082568 0.00016382
+                        -8.1496e-10 0.0007434 7.7327e-09
+                      ]
+                    }
+                  }
+                }
+              ]
+              name "Hip4Link"
+              boundingObject Transform {
+                translation -0.04 0.0776 -0.376
+                children [
+                  Shape {
+                    geometry Mesh {
+                      url [
+                        "/home/kangru/arm_leg_cooperation/simulation/wanghua/model/meshes360/Hip1Link_bounding.STL"
+                      ]
+                    }
+                  }
+                ]
+              }
+              physics Physics {
+                density -1
+                mass 3.91
+                centerOfMass [
+                  0.000334 0.068863 -0.08968
+                ]
+                inertiaMatrix [
+                  0.07359991 0.07104249 0.006643017
+                  4.4755e-05 0.000452606 -0.01037208
+                ]
+              }
+            }
+          }
+        ]
+        name "Abd4Link"
+        boundingObject Transform {
+          translation -0.055 -0.055 0
+          rotation 1 0 0 1.5709
+          children [
+            Cylinder {
+              height 0.065
+              radius 0.05
+            }
+          ]
+        }
+        physics Physics {
+          density -1
+          mass 1.656
+          centerOfMass [
+            -0.05057 -0.046982 1e-06
+          ]
+          inertiaMatrix [
+            0.002476692 0.002206021 0.002653852
+            0.000400827 -3e-09 5.9e-08
+          ]
+        }
+      }
+    }
+  ]
+  name "Quadruped"
+  boundingObject Transform {
+    translation 0 0 -0.03
+    children [
+      Box {
+        size 0.45 0.33 0.19
+      }
+    ]
+  }
+  physics Physics {
+    density -1
+    mass 35
+    centerOfMass [
+      0 0 0
+    ]
+  }
+  controller "<extern>"
+  supervisor TRUE
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+Floor {
+  size 50 50
+  appearance PBRAppearance {
+    baseColorMap ImageTexture {
+      url [
+        "/home/kangru/Softwares/webots-R2022a/webots-R2022a/projects/default/worlds/textures/grid.png"
+      ]
+    }
+    metalness 0
+  }
+}
+Solid {
+  translation 0 6.33 0.25
+  children [
+    Solid {
+      translation 3.15 0 0
+      children [
+        DEF box_test Shape {
+          appearance PBRAppearance {
+            baseColor 0.541176 0.886275 0.203922
+            metalness 0
+          }
+          geometry Box {
+            size 1 1 0.5
+          }
+        }
+      ]
+      name "solid(4)"
+      boundingObject USE box_test
+    }
+    Solid {
+      translation 2.1 0 0
+      children [
+        DEF box_test Shape {
+          appearance PBRAppearance {
+            baseColor 0.541176 0.886275 0.203922
+            metalness 0
+          }
+          geometry Box {
+            size 1 1 0.5
+          }
+        }
+      ]
+      name "solid(3)"
+      boundingObject USE box_test
+    }
+    Solid {
+      translation 1.05 0 0
+      children [
+        DEF box_test Shape {
+          appearance PBRAppearance {
+            baseColor 0.541176 0.886275 0.203922
+            metalness 0
+          }
+          geometry Box {
+            size 1 1 0.5
+          }
+        }
+      ]
+      name "solid(2)"
+      boundingObject USE box_test
+    }
+    Solid {
+      children [
+        DEF box_test Shape {
+          appearance PBRAppearance {
+            baseColor 0.541176 0.886275 0.203922
+            metalness 0
+          }
+          geometry Box {
+            size 1 1 0.5
+          }
+        }
+      ]
+      name "solid(1)"
+      boundingObject USE box_test
+    }
+  ]
+}
+Pit {
+  translation 10.72 6.84 -0.27
+  size 10 10 5
+  noiseAmplitude 0.5
+}
+DEF BALL Shape {
+  appearance PBRAppearance {
+    baseColor 1 0.54 0.08
+    roughness 0.3
+    metalness 0
+  }
+  geometry Sphere {
+    radius 0.0325
+    subdivision 4
+  }
+}
+Robot {
+  translation 2.84 11.71 0.12
+  children [
+    BallJoint {
+      jointParameters BallJointParameters {
+      }
+      jointParameters2 JointParameters {
+      }
+      jointParameters3 JointParameters {
+        axis 0 1 0
+      }
+      device [
+        RotationalMotor {
+          name "joint1"
+          maxTorque 200
+        }
+      ]
+      device2 [
+        RotationalMotor {
+          name "joint2"
+          minPosition -1.5707963267948966
+          maxPosition 1.5707963267948966
+          maxTorque 200
+        }
+      ]
+      device3 [
+        RotationalMotor {
+          name "joint3"
+          maxTorque 200
+        }
+      ]
+      endPoint Solid {
+        translation 0 0 0.07
+        rotation 0 1 0 0
+        children [
+          DEF platform Shape {
+            appearance PBRAppearance {
+              baseColor 0.678431 0.498039 0.658824
+              metalness 0
+            }
+            geometry Cylinder {
+              height 0.05
+              radius 0.6
+            }
+          }
+        ]
+        boundingObject USE platform
+      }
+    }
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 0 1 0
+        }
+      }
+      geometry Sphere {
+        radius 0.05
+      }
+    }
+  ]
+  controller "platform_move"
+}
+DEF TRAIL1 Shape {
+  appearance Appearance {
+    material Material {
+      diffuseColor 1 0 1
+      emissiveColor 1 0 1
+    }
+  }
+  geometry DEF TRAIL_LINE_SET1 IndexedLineSet {
+    coord Coordinate {
+      point [
+        0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0
+      ]
+    }
+    coordIndex [
+      0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1
+    ]
+  }
+}
+DEF TRAIL2 Shape {
+  appearance Appearance {
+    material Material {
+      diffuseColor 1 0 1
+      emissiveColor 1 0 1
+    }
+  }
+  geometry DEF TRAIL_LINE_SET2 IndexedLineSet {
+    coord Coordinate {
+      point [
+        0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0
+      ]
+    }
+    coordIndex [
+      0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1
+    ]
+  }
+}
+DEF TRAIL3 Shape {
+  appearance Appearance {
+    material Material {
+      diffuseColor 1 0 1
+      emissiveColor 1 0 1
+    }
+  }
+  geometry DEF TRAIL_LINE_SET3 IndexedLineSet {
+    coord Coordinate {
+      point [
+        0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0
+      ]
+    }
+    coordIndex [
+      0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1
+    ]
+  }
+}
+DEF TRAIL4 Shape {
+  appearance Appearance {
+    material Material {
+      diffuseColor 1 0 1
+      emissiveColor 1 0 1
+    }
+  }
+  geometry DEF TRAIL_LINE_SET4 IndexedLineSet {
+    coord Coordinate {
+      point [
+        0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0
+      ]
+    }
+    coordIndex [
+      0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1
+    ]
+  }
+}
+DEF TRAIL_COG Shape {
+  appearance Appearance {
+    material Material {
+      diffuseColor 1 0 0
+      emissiveColor 1 0 0
+    }
+  }
+  geometry DEF TRAIL_LINE_SET_COG IndexedLineSet {
+    coord Coordinate {
+      point [
+        0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0, 0 0 0
+      ]
+    }
+    coordIndex [
+      0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1
+    ]
+  }
+}

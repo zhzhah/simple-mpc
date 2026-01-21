@@ -1,0 +1,990 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot 
+  name="quadruped_new">
+  <!-- <link name="world" />
+  <joint name="floating_base_joint" type="floating">
+   <origin xyz="0 0 0" rpy="0 0 0" />
+   <parent link="world" />
+   <child link="base_link" />
+  </joint> -->
+  <link
+    name="base">
+    <inertial>
+      <origin
+        xyz="-0.000092 0.001447 -0.042478"
+        rpy="0 0 0" />
+      <mass
+        value="26.5" />
+      <inertia
+        ixx="0.259494841"
+        ixy="-4.1227E-05"
+        ixz="1.93862E-04"
+        iyy="0.859939262"
+        iyz="-2.040130E-03"
+        izz="0.945567440" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.79216 0.81961 0.93333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="Abd1Link">
+    <inertial>
+      <origin
+        xyz="0.050570 0.046892 1.0E-06"
+        rpy="0 0 0" />
+      <mass
+        value="1.656" />
+      <inertia
+        ixx="0.002476692"
+        ixy="4.00827E-04"
+        ixz="3.0E-09"
+        iyy="2.206021E-03"
+        iyz="-5.9E-08"
+        izz="2.653852E-03" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Abd1Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.89804 0.91765 0.92941 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Abd1Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Abd1Joint"
+    type="revolute">
+    <origin
+      xyz="0.244 -0.115 0"
+      rpy="0 0 0" />
+    <parent
+      link="base" />
+    <child
+      link="Abd1Link" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-0.35" 
+      upper="0.35" 
+      effort="80"
+      velocity="20" />
+  </joint>
+  <link
+    name="Hip1Link">
+    <inertial>
+      <origin
+        xyz="-0.00063 -0.0201 -0.15827"
+        rpy="0 0 0" />
+      <mass
+        value="1.337" />
+      <inertia
+        ixx="0.018816808"
+        ixy="-3.29929E-05"
+        ixz="0.000792"
+        iyy="0.018864419"
+        iyz="0.000185"
+        izz="0.000837451" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Hip1Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.79216 0.81961 0.93333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Hip1Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Hip1Joint"
+    type="revolute">
+    <origin
+      xyz="0.056 0.018587 0"
+      rpy="0 0 0" />
+    <parent
+      link="Abd1Link" />
+    <child
+      link="Hip1Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-3.00" 
+      upper="-0.35"  
+      effort="160"
+      velocity="40" />
+  </joint>
+  <link
+    name="Knee1Link">
+    <inertial>
+      <origin
+        xyz="-0.00517 0 -0.12521"
+        rpy="0 0 0" />
+      <mass
+        value="0.6489" />
+      <inertia
+        ixx="0.006478288"
+        ixy="2.4E-10"
+        ixz="-0.00013"
+        iyy="0.006528945"
+        iyz="-1.015E-08"
+        izz="0.00013568" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Knee1Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Knee1Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Knee1Joint"
+    type="revolute">
+    <origin
+      xyz="0 -0.10039 -0.36"
+      rpy="0 0 0" />
+    <parent
+      link="Hip1Link" />
+    <child
+      link="Knee1Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="0.2" 
+      upper="3.0" 
+      effort="160"
+      velocity="40" />
+ </joint>
+  <link
+    name="Wheel1Link">
+    <inertial>
+      <origin
+        xyz="-4.5E-05 0.001797 0.0003157"
+        rpy="0 0 0" />
+      <mass
+        value="0.348" />
+      <inertia
+        ixx="0.000621735"
+        ixy="-5.607E-08"
+        ixz="8.73E-07"
+        iyy="0.001203666"
+        iyz="3.88E-07"
+        izz="0.000627665" />
+    </inertial>
+    <visual>
+    <origin
+        xyz="0 0 0"
+        rpy="1.571 0 0" />
+      <geometry>
+          <cylinder length="0.01" radius="0.125"/> 
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.89804 0.91765 0.92941 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="1.571 0 0" />
+      <geometry>
+          <cylinder length="0.01" radius="0.125"/> 
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Wheel1Joint"
+    type="revolute">
+    <origin
+      xyz="0 -0.052299 -0.36"
+      rpy="0 0 0" />
+    <parent
+      link="Knee1Link" />
+    <child
+      link="Wheel1Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      effort="10"
+      velocity="18.85" />
+  </joint>
+  <link name="Wheel1Point" />
+  <joint name="Wheel1GrandJoint" type="fixed">
+   <origin xyz="0 0 -0.1015" rpy="0 0 0" />
+   <parent link="Wheel1Link" />
+   <child link="Wheel1Point" />
+
+  </joint>
+  <link
+    name="Abd2Link">
+    <inertial>
+      <origin
+        xyz="-0.050570 0.046982 -1.0E-06"
+        rpy="0 0 0" />
+      <mass
+        value="1.656" />
+      <inertia
+        ixx="0.002476692"
+        ixy="-4.00827E-04"
+        ixz="3.0E-09"
+        iyy="2.206021E-03"
+        iyz="5.9E-08"
+        izz="2.653852E-03" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Abd2Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.89804 0.91765 0.92941 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Abd2Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Abd2Joint"
+    type="revolute">
+    <origin
+      xyz="-0.244 -0.115 0"
+      rpy="0 0 0" />
+    <parent
+      link="base" />
+    <child
+      link="Abd2Link" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-0.35" 
+      upper="0.35"
+      effort="80"
+      velocity="20" />
+  </joint>
+  <link
+    name="Hip2Link">
+    <inertial>
+      <origin
+        xyz="-0.00063 -0.0201 -0.15827"
+        rpy="0 0 0" />
+      <mass
+        value="1.337" />
+      <inertia
+        ixx="0.018816808"
+        ixy="-3.29929E-05"
+        ixz="0.000792"
+        iyy="0.018864419"
+        iyz="0.000185"
+        izz="0.000837451" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Hip2Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.79216 0.81961 0.93333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Hip2Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Hip2Joint"
+    type="revolute">
+    <origin
+      xyz="-0.056 0.018587 0"
+      rpy="0 0 0" />
+    <parent
+      link="Abd2Link" />
+    <child
+      link="Hip2Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-3.00" 
+      upper="-0.35"  
+      effort="160"
+      velocity="40" />
+  </joint>
+  <link
+    name="Knee2Link">
+    <inertial>
+      <origin
+        xyz="-0.00517 0 -0.12521"
+        rpy="0 0 0" />
+      <mass
+        value="0.6489" />
+      <inertia
+        ixx="0.006478288"
+        ixy="2.4E-10"
+        ixz="-0.00013"
+        iyy="0.006528945"
+        iyz="-1.015E-08"
+        izz="0.00013568" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Knee2Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Knee2Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Knee2Joint"
+    type="revolute">
+    <origin
+      xyz="0 -0.10039 -0.36"
+      rpy="0 0 0" />
+    <parent
+      link="Hip2Link" />
+    <child
+      link="Knee2Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="0.2" 
+      upper="3.0" 
+      effort="160"
+      velocity="40" />
+
+</joint>
+  <link
+    name="Wheel2Link">
+    <inertial>
+      <origin
+        xyz="3.15E-04 0.001797 -4.1E-5"
+        rpy="0 0 0" />
+      <mass
+        value="0.348" />
+      <inertia
+        ixx="0.000627689"
+        ixy="3.95E-07"
+        ixz="7.88E-07"
+        iyy="0.001203666"
+        iyz="-6.2E-07"
+        izz="0.000621711" />
+    </inertial>
+    <visual>
+    <origin
+        xyz="0 0 0"
+        rpy="1.571 0 0" />
+      <geometry>
+          <cylinder length="0.01" radius="0.125"/> 
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="1.571 0 0" />
+      <geometry>
+          <cylinder length="0.01" radius="0.125"/> 
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Wheel2Joint"
+    type="revolute">
+    <origin
+      xyz="0 -0.052299 -0.36"
+      rpy="0 0 0" />
+    <parent
+      link="Knee2Link" />
+    <child
+      link="Wheel2Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      effort="10"
+      velocity="18.85" />
+  </joint>
+  <link name="Wheel2Point" />
+  <joint name="Wheel2GrandJoint" type="fixed">
+   <origin xyz="0 0 -0.1015" rpy="0 0 0" />
+   <parent link="Wheel2Link" />
+   <child link="Wheel2Point" />
+
+  </joint>
+  <link
+    name="Abd3Link">
+    <inertial>
+      <origin
+        xyz="0.050570 -0.046982 -1.0E-06"
+        rpy="0 0 0" />
+      <mass
+        value="1.656" />
+      <inertia
+        ixx="0.002476692"
+        ixy="-4.00827E-04"
+        ixz="-3.0E-09"
+        iyy="2.206021E-03"
+        iyz="-5.9E-08"
+        izz="2.653852E-03" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Abd3Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.89804 0.91765 0.92941 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Abd3Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Abd3Joint"
+    type="revolute">
+    <origin
+      xyz="0.244 0.115 0"
+      rpy="0 0 0" />
+    <parent
+      link="base" />
+    <child
+      link="Abd3Link" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-0.35" 
+      upper="0.35"
+      effort="80"
+      velocity="20" />
+  </joint>
+  <link
+    name="Hip3Link">
+    <inertial>
+      <origin
+        xyz="-0.00063 0.0201 -0.15827"
+        rpy="0 0 0" />
+      <mass
+        value="1.337" />
+      <inertia
+        ixx="0.018816835"
+        ixy="-3.29964E-05"
+        ixz="0.000792"
+        iyy="0.018864405"
+        iyz="0.000185353"
+        izz="0.000837413" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Hip3Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.79216 0.81961 0.93333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Hip3Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Hip3Joint"
+    type="revolute">
+    <origin
+      xyz="0.056 -0.018587 0"
+      rpy="0 0 0" />
+    <parent
+      link="Abd3Link" />
+    <child
+      link="Hip3Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-3.00" 
+      upper="-0.35" 
+      effort="160"
+      velocity="40" />
+  </joint>
+  <link
+    name="Knee3Link">
+    <inertial>
+      <origin
+        xyz="-0.00517 0 -0.12521"
+        rpy="0 0 0" />
+      <mass
+        value="0.6489" />
+      <inertia
+        ixx="0.006478288"
+        ixy="2.4E-10"
+        ixz="-0.00013"
+        iyy="0.006528945"
+        iyz="-1.015E-08"
+        izz="0.00013568" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Knee3Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Knee3Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Knee3Joint"
+    type="revolute">
+    <origin
+      xyz="0 0.10039 -0.36"
+      rpy="0 0 0" />
+    <parent
+      link="Hip3Link" />
+    <child
+      link="Knee3Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="0.2" 
+      upper="3.0" 
+      effort="160"
+      velocity="40" />
+  </joint>
+  <link
+    name="Wheel3Link">
+    <inertial>
+      <origin
+        xyz="3.02E-04 -0.001797 9.9E-5"
+        rpy="0 0 0" />
+      <mass
+        value="0.348" />
+      <inertia
+        ixx="0.000627201"
+        ixy="-3.78E-07"
+        ixz="-1.817E-06"
+        iyy="0.001203666"
+        iyz="-1.15E-07"
+        izz="0.000622200" />
+    </inertial>
+    <visual>
+    <origin
+        xyz="0 0 0"
+        rpy="1.571 0 0" />
+      <geometry>
+          <cylinder length="0.01" radius="0.125"/> 
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="1.571 0 0" />
+      <geometry>
+          <cylinder length="0.01" radius="0.125"/> 
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Wheel3Joint"
+    type="revolute">
+    <origin
+      xyz="0 0.052599 -0.36"
+      rpy="0 0 0" />
+    <parent
+      link="Knee3Link" />
+    <child
+      link="Wheel3Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      effort="10"
+      velocity="18.85" />
+  </joint>
+  <link name="Wheel3Point" />
+  <joint name="Wheel3GrandJoint" type="fixed">
+   <origin xyz="0 0 -0.1015" rpy="0 0 0" />
+   <parent link="Wheel3Link" />
+   <child link="Wheel3Point" />
+
+  </joint>
+  <link
+    name="Abd4Link">
+    <inertial>
+      <origin
+        xyz="-0.050570 -0.046982 1.0E-06"
+        rpy="0 0 0" />
+      <mass
+        value="1.656" />
+      <inertia
+        ixx="0.002476692"
+        ixy="4.00827E-04"
+        ixz="-3.0E-09"
+        iyy="2.206021E-03"
+        iyz="5.9E-08"
+        izz="2.653852E-03" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Abd4Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.89804 0.91765 0.92941 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Abd4Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Abd4Joint"
+    type="revolute">
+    <origin
+      xyz="-0.244 0.115 0"
+      rpy="0 0 0" />
+    <parent
+      link="base" />
+    <child
+      link="Abd4Link" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-0.35" 
+      upper="0.35"
+      effort="80"
+      velocity="20" />
+  </joint>
+  <link
+    name="Hip4Link">
+    <inertial>
+      <origin
+        xyz="-0.00063 0.0201 -0.15827"
+        rpy="0 0 0" />
+      <mass
+        value="1.337" />
+      <inertia
+        ixx="0.018816835"
+        ixy="-3.29964E-05"
+        ixz="0.000792"
+        iyy="0.018864405"
+        iyz="0.000185353"
+        izz="0.000837413" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Hip4Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.79216 0.81961 0.93333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Hip4Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Hip4Joint"
+    type="revolute">
+    <origin
+      xyz="-0.056 -0.018587 0"
+      rpy="0 0 0" />
+    <parent
+      link="Abd4Link" />
+    <child
+      link="Hip4Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-3.00" 
+      upper="-0.35" 
+      effort="160"
+      velocity="40" />
+  </joint>
+  <link
+    name="Knee4Link">
+    <inertial>
+      <origin
+        xyz="-0.00517 0 -0.12521"
+        rpy="0 0 0" />
+      <mass
+        value="0.6489" />
+      <inertia
+        ixx="0.006478288"
+        ixy="2.4E-10"
+        ixz="-0.00013"
+        iyy="0.006528945"
+        iyz="-1.015E-08"
+        izz="0.00013568" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Knee4Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/Knee4Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Knee4Joint"
+    type="revolute">
+    <origin
+      xyz="0 0.10039 -0.36"
+      rpy="0 0 0" />
+    <parent
+      link="Hip4Link" />
+    <child
+      link="Knee4Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="0.2" 
+      upper="3.0" 
+      effort="160"
+      velocity="40" />
+ </joint>
+  <link
+    name="Wheel4Link">
+    <inertial>
+      <origin
+        xyz="2.7E-04 -0.001797 -0.000167"
+        rpy="0 0 0" />
+      <mass
+        value="0.348" />
+      <inertia
+        ixx="0.000626067"
+        ixy="-3.38E-07"
+        ixz="2.772E-06"
+        iyy="0.001203666"
+        iyz="2.21E-07"
+        izz="0.000623334" />
+    </inertial>
+    <visual>
+    <origin
+        xyz="0 0 0"
+        rpy="1.571 0 0" />
+      <geometry>
+          <cylinder length="0.01" radius="0.125"/> 
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="1.571 0 0" />
+      <geometry>
+          <cylinder length="0.01" radius="0.125"/> 
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="Wheel4Joint"
+    type="revolute">
+    <origin
+      xyz="0 0.052599 -0.36"
+      rpy="0 0 0" />
+    <parent
+      link="Knee4Link" />
+    <child
+      link="Wheel4Link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      effort="10"
+      velocity="15" />
+  </joint>
+  <link name="Wheel4Point" />
+  <joint name="Wheel4GrandJoint" type="fixed">
+   <origin xyz="0 0 -0.1015" rpy="0 0 0" />
+   <parent link="Wheel4Link" />
+   <child link="Wheel4Point" />
+  </joint>
+</robot>
