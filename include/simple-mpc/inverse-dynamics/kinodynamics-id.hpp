@@ -17,7 +17,33 @@ namespace simple_mpc
   class KinodynamicsID
   {
   public:
+    struct ActuatedRollingConstraint {
+      std::string contact_frame_name; // contact frame (foot) name
+      double radius = 0.0;           // wheel radius
+      double inertia = 0.0;          // wheel rotational inertia (optional)
+      ActuatedRollingConstraint() = default;
+      ActuatedRollingConstraint(const std::string &n, double r, double I)
+        : contact_frame_name(n), radius(r), inertia(I) {}
+    };
+
+    /// Register an actuated rolling constraint for a wheel/contact frame.
+    /// The constraint enforces: tau_wheel - c_f^T * f_contact - inertia * ddq_wheel = 0
+    void addActuatedRollingConstraint(const std::string &contact_frame_name, double radius, double inertia = 0.0);
+
     typedef Eigen::VectorXd TargetContactForce;
+
+    struct NonHolonomicRollingConstraint {
+      std::string contact_frame_name; // contact frame (foot) name
+      double radius = 0.0;           // wheel radius (used to overwrite jacobian entry)
+      NonHolonomicRollingConstraint() = default;
+      NonHolonomicRollingConstraint(const std::string &n, double r)
+        : contact_frame_name(n), radius(r) {}
+    };
+
+    /// Register a non-holonomic rolling constraint on a contact frame.
+    /// The constraint enforces tangential contact acceleration = 0 at the contact point.
+    /// (J_modified * ddq = -dotJ * qdot)
+    void addNonHolonomicRollingConstraint(const std::string &contact_frame_name, double radius);
 
     struct Settings
     {
@@ -34,11 +60,20 @@ namespace simple_mpc
       // Tasks gains
       double kp_base = 0.;
       double kp_posture = 0.;
+  double kp_posture_wheel = 0.;
       double kp_contact = 0.;
+  // Wheel-specific physical/settings
+  double wheel_radius = 0.0762;    // default wheel radius (meters)
+  double ff_wheel_scale = 1.1;     // feed-forward scale for wheel torque
+
+  // Enable/disable adding non-holonomic rolling equality constraints
+  // when solving the HQP. Set to false to temporarily disable them for testing.
+  bool enable_nonholonomic = true;
 
       // Tasks weights
       double w_base = -1.;           // Disabled by default
       double w_posture = -1.;        // Disabled by default
+  double w_posture_wheel = -1.;  // Disabled by default (wheel-specific posture weight)
       double w_contact_motion = -1.; // Disabled by default
       double w_contact_force = -1.;  // Disabled by default
 
@@ -90,6 +125,8 @@ namespace simple_mpc
     Eigen::VectorXd q_target_;
     Eigen::VectorXd v_target_;
     Eigen::VectorXd a_target_;
+    std::vector<ActuatedRollingConstraint> rolling_constraints_;
+    std::vector<NonHolonomicRollingConstraint> nonholonomic_constraints_;
   };
 
 } // namespace simple_mpc

@@ -65,12 +65,17 @@ namespace simple_mpc
         .def_readwrite("contact_weight_ratio_min", &KinodynamicsID::Settings::contact_weight_ratio_min)
         .def_readwrite("kp_base", &KinodynamicsID::Settings::kp_base)
         .def_readwrite("kp_posture", &KinodynamicsID::Settings::kp_posture)
+  .def_readwrite("kp_posture_wheel", &KinodynamicsID::Settings::kp_posture_wheel)
         .def_readwrite("kp_contact", &KinodynamicsID::Settings::kp_contact)
+  .def_readwrite("wheel_radius", &KinodynamicsID::Settings::wheel_radius)
+  .def_readwrite("ff_wheel_scale", &KinodynamicsID::Settings::ff_wheel_scale)
         .def_readwrite("w_base", &KinodynamicsID::Settings::w_base)
         .def_readwrite("w_posture", &KinodynamicsID::Settings::w_posture)
+  .def_readwrite("w_posture_wheel", &KinodynamicsID::Settings::w_posture_wheel)
         .def_readwrite("w_contact_motion", &KinodynamicsID::Settings::w_contact_motion)
         .def_readwrite("w_contact_force", &KinodynamicsID::Settings::w_contact_force)
-        .def_readwrite("contact_motion_equality", &KinodynamicsID::Settings::contact_motion_equality);
+        .def_readwrite("contact_motion_equality", &KinodynamicsID::Settings::contact_motion_equality)
+        .def_readwrite("enable_nonholonomic", &KinodynamicsID::Settings::enable_nonholonomic);
 
       bp::class_<KinodynamicsID, boost::noncopyable>(
         "KinodynamicsID", bp::init<const simple_mpc::RobotModelHandler &, double, const KinodynamicsID::Settings>(

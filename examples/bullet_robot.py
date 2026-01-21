@@ -7,6 +7,7 @@ Created on Mon May  9 18:22:56 2022
 
 import pybullet_data
 import pybullet as p  # PyBullet simulator
+import os
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
@@ -25,7 +26,12 @@ class BulletRobot:
         robotOrientation=[0, 0, 0],
         inertiaOffset=True,
     ):
-        p.connect(p.GUI)  # Start the client for PyBullet
+        # Start the client for PyBullet. Use GUI if an X DISPLAY is available,
+        # otherwise fall back to DIRECT (headless) to avoid X connection errors.
+        if os.getenv("DISPLAY"):
+            p.connect(p.GUI)
+        else:
+            p.connect(p.DIRECT)
         p.setTimeStep(simuStep)
         p.setGravity(0, 0, -9.81)  # Set gravity (disabled by default)
 

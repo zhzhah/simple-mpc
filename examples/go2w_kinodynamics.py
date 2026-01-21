@@ -209,13 +209,21 @@ interpolator = Interpolator(model_handler.getModel())
 """ Inverse Dynamics """
 kino_ID_settings = KinodynamicsIDSettings()
 kino_ID_settings.kp_base = 7.0
-kino_ID_settings.kp_posture = 50.0
+kino_ID_settings.kp_posture = 10.0
 kino_ID_settings.kp_contact = 0.0
 kino_ID_settings.w_base = 100.0
 kino_ID_settings.w_posture = 10.0
 kino_ID_settings.w_contact_force = 1.0
 kino_ID_settings.w_contact_motion = 0.0
-
+# Wheel-specific posture gains/weight (if equal to the above, behavior remains unchanged)
+kino_ID_settings.kp_posture_wheel = 0.0
+kino_ID_settings.w_posture_wheel = 0.0
+# Wheel physical settings
+kino_ID_settings.wheel_radius = wheel_radius
+kino_ID_settings.ff_wheel_scale = 1.0
+# Temporarily disable non-holonomic rolling constraints for testing
+# (set to False to check whether they cause an abrupt exit)
+kino_ID_settings.enable_nonholonomic = False
 kino_ID = KinodynamicsID(model_handler, dt_simu, kino_ID_settings)
 
 
@@ -372,7 +380,7 @@ for step in range(3000):
         q_meas, v_meas = device.measureState()
         x_measured = np.concatenate([q_meas, v_meas])
 
-        v_interp[wheel_v_indices] = wheel_target_vel
+        # v_interp[wheel_v_indices] = wheel_target_vel
         v_interp[:6] = mpc.velocity_base
         if base_pos_ref is None:
             base_pos_ref = q_interp[:3].copy()
@@ -380,11 +388,11 @@ for step in range(3000):
             base_pos_ref = base_pos_ref + v_interp[:3] * dt_simu
         q_interp[:3] = base_pos_ref
  
-        if wheel_pos_ref is None:
-            wheel_pos_ref = q_interp[wheel_q_indices].copy()
-        else:
-            wheel_pos_ref = wheel_pos_ref + wheel_target_vel * dt_simu
-        q_interp[wheel_q_indices] = wheel_pos_ref
+        # if wheel_pos_ref is None:
+        #     wheel_pos_ref = q_interp[wheel_q_indices].copy()
+        # else:
+        #     wheel_pos_ref = wheel_pos_ref + wheel_target_vel * dt_simu
+        # q_interp[wheel_q_indices] = wheel_pos_ref
 
         # Temporary test: override MPC targets with fixed ID targets and gravity compensation
         

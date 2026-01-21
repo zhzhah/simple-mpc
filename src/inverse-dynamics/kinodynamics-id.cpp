@@ -59,7 +59,38 @@ KinodynamicsID::KinodynamicsID(const RobotModelHandler & model_handler, double c
 
   // Add the posture task
   postureTask_ = std::make_unique<tsid::tasks::TaskJointPosture>("task-posture", robot_);
-  postureTask_->Kp(settings_.kp_posture * Eigen::VectorXd::Ones(nu));
+
+  // Build a per-actuator Kp vector. By default use settings_.kp_posture for all actuated joints,
+  // but override wheel actuators with kp_posture_wheel when provided. To emulate a wheel-specific
+  // posture "weight" without adding a separate task, we optionally scale the wheel Kp by
+  // settings_.w_posture_wheel if it is positive.
+  Eigen::VectorXd Kp_all = settings_.kp_posture * Eigen::VectorXd::Ones(nu);
+  if (settings_.kp_posture_wheel > 0.)
+  {
+    // detect wheel joints by frame name containing "wheel"
+    for (std::size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); ++foot_nb)
+    {
+      const std::string & frame_name = model_handler_.getFootFrameName(foot_nb);
+      if (frame_name.find("wheel") == std::string::npos)
+        continue;
+      const pinocchio::FrameIndex frame_id = model_handler_.getFootFrameId(foot_nb);
+      const pinocchio::JointIndex joint_id = model.frames[frame_id].parentJoint;
+      const int idx_v = model.joints[joint_id].idx_v();
+      const int actuator_index = idx_v - 6;
+      if (actuator_index >= 0 && actuator_index < nu)
+      {
+        double kp_val = settings_.kp_posture_wheel;
+        if (settings_.w_posture_wheel > 0. && settings_.w_posture > 0.)
+        {
+          // scale Kp to reflect wheel-specific weight relative to base posture weight
+          kp_val *= (settings_.w_posture_wheel / settings_.w_posture);
+        }
+        Kp_all(actuator_index) = kp_val;
+      }
+    }
+  }
+
+  postureTask_->Kp(Kp_all);
   postureTask_->Kd(2.0 * postureTask_->Kp().cwiseSqrt());
   if (settings_.w_posture > 0.)
     formulation_.addMotionTask(*postureTask_, settings_.w_posture, 1);
@@ -191,6 +222,16 @@ void KinodynamicsID::setTarget(
   solver_.resize(formulation_.nVar(), formulation_.nEq(), formulation_.nIn());
 }
 
+void KinodynamicsID::addActuatedRollingConstraint(const std::string &contact_frame_name, double radius, double inertia)
+{
+  rolling_constraints_.emplace_back(contact_frame_name, radius, inertia);
+}
+
+void KinodynamicsID::addNonHolonomicRollingConstraint(const std::string &contact_frame_name, double radius)
+{
+  nonholonomic_constraints_.emplace_back(contact_frame_name, radius);
+}
+
 void KinodynamicsID::solve(
   const double t,
   const Eigen::Ref<const Eigen::VectorXd> & q_meas,
@@ -249,38 +290,298 @@ void KinodynamicsID::solve(
 
   // Solve QP
   const tsid::solvers::HQPData & solver_data = formulation_.computeProblemData(t, q_meas, v_meas);
-  last_solution_ = solver_.solve(solver_data);
+
+  // Make a mutable copy of the HQP data so we can append our custom equality constraints
+  tsid::solvers::HQPData hqp = solver_data;
+
+  // If the user registered rolling constraints, build an equality constraint for them
+  if (!rolling_constraints_.empty())
+  {
+    const unsigned int nvar = formulation_.nVar();
+
+    // Try to find actuation mapping: find the actuation constraint matrix to locate tau columns
+    std::vector<int> actuator_col_by_row; // actuator row -> column index in x
+    for (const auto &level : hqp)
+    {
+      for (const auto &p : level)
+      {
+        const auto &c = p.second;
+        if (c && c->name().find("actuation-limits") != std::string::npos)
+        {
+          const Eigen::MatrixXd A = c->matrix();
+          const int rows = static_cast<int>(A.rows());
+          const int cols = static_cast<int>(A.cols());
+          actuator_col_by_row.assign(rows, -1);
+          for (int r = 0; r < rows; ++r)
+          {
+            for (int col = 0; col < cols; ++col)
+            {
+              if (std::abs(A(r, col)) > 1e-9)
+              {
+                actuator_col_by_row[r] = col;
+                break;
+              }
+            }
+          }
+          break;
+        }
+      }
+      if (!actuator_col_by_row.empty())
+        break;
+    }
+
+    // For each registered rolling constraint, build a row in the equality matrix
+    const std::string eq_name = "actuated-rolling";
+    const unsigned int rows = static_cast<unsigned int>(rolling_constraints_.size());
+    auto eq = std::make_shared<tsid::math::ConstraintEquality>(eq_name, rows, nvar);
+    eq->setVector(Eigen::VectorXd::Zero(rows));
+
+    for (unsigned int ic = 0; ic < rolling_constraints_.size(); ++ic)
+    {
+      const auto &rc = rolling_constraints_[ic];
+      // find foot index
+      int foot_nb = -1;
+      for (std::size_t f = 0; f < model_handler_.getFeetNb(); ++f)
+      {
+        if (model_handler_.getFootFrameName(f) == rc.contact_frame_name)
+        {
+          foot_nb = static_cast<int>(f);
+          break;
+        }
+      }
+      if (foot_nb < 0)
+        continue;
+
+      // find contact force columns for this contact: search HQP for a constraint referencing the contact frame name
+      int contact_force_col0 = -1; // first column index for this contact's force vector
+      int contact_force_dim = 0;
+      for (const auto &level : hqp)
+      {
+        for (const auto &p : level)
+        {
+          const auto &c = p.second;
+          if (!c) continue;
+          const std::string cname = c->name();
+          if (cname.find(rc.contact_frame_name) != std::string::npos && c->cols() == static_cast<unsigned int>(nvar))
+          {
+            // Inspect matrix to find contiguous non-zero columns for this contact
+            const Eigen::MatrixXd A = c->matrix();
+            const int cols = static_cast<int>(A.cols());
+            // look for columns having any non-zero in rows
+            std::vector<int> cols_nonzero;
+            for (int col = 0; col < cols; ++col)
+            {
+              if (A.col(col).cwiseAbs().maxCoeff() > 1e-9)
+                cols_nonzero.push_back(col);
+            }
+            if (!cols_nonzero.empty())
+            {
+              // assume contiguous and represent contact force components
+              contact_force_col0 = cols_nonzero.front();
+              contact_force_dim = static_cast<int>(cols_nonzero.size());
+              break;
+            }
+          }
+        }
+        if (contact_force_col0 >= 0)
+          break;
+      }
+
+      // If we couldn't find by name, attempt to find contact block by scanning for contact force dimensions
+      if (contact_force_col0 < 0)
+      {
+        // fallback: try to locate the first constraint that looks like a contact-force constraint (rows small, non-zero columns)
+        for (const auto &level : hqp)
+        {
+          for (const auto &p : level)
+          {
+            const auto &c = p.second;
+            if (!c) continue;
+            const Eigen::MatrixXd A = c->matrix();
+            if (A.rows() > 0 && A.rows() <= 6)
+            {
+              std::vector<int> cols_nonzero;
+              for (int col = 0; col < static_cast<int>(A.cols()); ++col)
+              {
+                if (A.col(col).cwiseAbs().maxCoeff() > 1e-9)
+                  cols_nonzero.push_back(col);
+              }
+              if (!cols_nonzero.empty())
+              {
+                contact_force_col0 = cols_nonzero.front();
+                contact_force_dim = static_cast<int>(cols_nonzero.size());
+                break;
+              }
+            }
+          }
+          if (contact_force_col0 >= 0)
+            break;
+        }
+      }
+
+      // determine joint and actuator index for this foot
+      const pinocchio::FrameIndex frame_id = model_handler_.getFootFrameId(foot_nb);
+      const pinocchio::JointIndex joint_id = model.frames[frame_id].parentJoint;
+      const int idx_v = model.joints[joint_id].idx_v();
+      const int nv_joint = model.joints[joint_id].nv();
+      if (nv_joint != 1)
+        continue;
+
+      // actuator row index (row in actuation constraint) typically equals (idx_v - 6)
+      const int actuator_row = idx_v - 6;
+
+      // tau column in x
+      int tau_col = -1;
+      if (actuator_row >= 0 && actuator_row < static_cast<int>(actuator_col_by_row.size()))
+        tau_col = actuator_col_by_row[actuator_row];
+
+      // build coefficients for contact force: compute c_f = axis_world.cross(r_world)
+      const pinocchio::SE3 & foot_pose = data_handler_.getFootPose(foot_nb);
+      const Eigen::Vector3d axis_world = foot_pose.rotation() * Eigen::Vector3d::UnitY();
+  // Use per-constraint radius if provided (>0), otherwise fall back to global setting
+  const double use_radius = (rc.radius > 0.0) ? rc.radius : settings_.wheel_radius;
+  const Eigen::Vector3d r_world = -use_radius * (foot_pose.rotation() * Eigen::Vector3d::UnitZ());
+      const Eigen::Vector3d c_f = axis_world.cross(r_world);
+
+      // Fill matrix row: tau coeff
+      if (tau_col >= 0 && tau_col < static_cast<int>(nvar))
+        eq->matrix()(static_cast<int>(ic), tau_col) = 1.0;
+
+      // Fill contact force coeffs (assume contact_force_dim == 3 when available)
+      if (contact_force_col0 >= 0 && contact_force_col0 + contact_force_dim <= static_cast<int>(nvar))
+      {
+        // we assume force vector order matches world x,y,z or contact components that map directly
+        for (int k = 0; k < contact_force_dim && k < 3; ++k)
+          eq->matrix()(static_cast<int>(ic), contact_force_col0 + k) = -c_f(static_cast<int>(k));
+      }
+
+      // Fill inertia term on ddq: ddq column equals idx_v (acceleration index)
+      const int ddq_col = idx_v; // ddq vector includes base (0..5) and joints (6..)
+      if (ddq_col >= 0 && ddq_col < static_cast<int>(nvar))
+        eq->matrix()(static_cast<int>(ic), ddq_col) = -rc.inertia;
+    }
+
+    // Insert constraint at highest priority level (0)
+    if (hqp.size() == 0)
+      hqp.resize(1);
+    hqp[0].push_back(tsid::solvers::aligned_pair<double, std::shared_ptr<tsid::math::ConstraintBase> >(1.0, eq));
+  }
+
+  // Non-holonomic rolling constraints: constrain tangential contact acceleration = 0
+  // Can be disabled at runtime via settings_.enable_nonholonomic for quick testing.
+  if (settings_.enable_nonholonomic && !nonholonomic_constraints_.empty())
+  {
+    // Ensure jacobians/time variation are computed
+    data_handler_.updateInternalData(q_meas, v_meas, true);
+    const unsigned int nvar = formulation_.nVar();
+    const unsigned int rows = static_cast<unsigned int>(nonholonomic_constraints_.size());
+    auto eq_nh = std::make_shared<tsid::math::ConstraintEquality>("nonholonomic-rolling", rows, nvar);
+    Eigen::VectorXd b_nh = Eigen::VectorXd::Zero(rows);
+
+    for (unsigned int ic = 0; ic < nonholonomic_constraints_.size(); ++ic)
+    {
+      const auto &nh = nonholonomic_constraints_[ic];
+      // find foot index
+      int foot_nb = -1;
+      for (std::size_t f = 0; f < model_handler_.getFeetNb(); ++f)
+      {
+        if (model_handler_.getFootFrameName(f) == nh.contact_frame_name)
+        {
+          foot_nb = static_cast<int>(f);
+          break;
+        }
+      }
+      if (foot_nb < 0)
+        continue;
+
+      const pinocchio::FrameIndex frame_id = model_handler_.getFootFrameId(foot_nb);
+
+      // Access internal data (non-const) to call Pinocchio functions
+      const pinocchio::Data & data_const = data_handler_.getData();
+      pinocchio::Data & data_nc = const_cast<pinocchio::Data &>(data_const);
+
+      // Frame Jacobian (6 x nv): angular top 3, linear bottom 3
+      Eigen::MatrixXd J6 = pinocchio::getFrameJacobian(model, data_nc, frame_id, pinocchio::LOCAL_WORLD_ALIGNED);
+
+      // Frame Jacobian time variation (6 x nv)
+      Eigen::MatrixXd dJ6 = Eigen::MatrixXd::Zero(6, model.nv);
+      pinocchio::getFrameJacobianTimeVariation(model, data_nc, frame_id, pinocchio::LOCAL_WORLD_ALIGNED, dJ6);
+
+      const Eigen::MatrixXd J_lin = J6.block(3, 0, 3, model.nv);
+      const Eigen::MatrixXd dJ_lin = dJ6.block(3, 0, 3, model.nv);
+
+      // Tangential direction (wheel rolling direction) in world frame
+      const pinocchio::SE3 & foot_pose = data_handler_.getFootPose(foot_nb);
+      const Eigen::Vector3d tangent = foot_pose.rotation() * Eigen::Vector3d::UnitY();
+
+      // row coefficients: tangent^T * J_lin  (1 x nv)
+      Eigen::RowVectorXd rowCoeffs = tangent.transpose() * J_lin; // size nv
+
+      // bias = tangent^T * dJ_lin * v_meas
+      Eigen::VectorXd v_full = v_meas; // nv vector
+      double bias = (tangent.transpose() * (dJ_lin * v_full))(0);
+
+      // Fill eq row (only ddq columns, assumed to be first nv columns)
+      for (int col = 0; col < model.nv; ++col)
+      {
+        eq_nh->matrix()(static_cast<int>(ic), col) = rowCoeffs(col);
+      }
+      b_nh(static_cast<int>(ic)) = -bias;
+    }
+
+    eq_nh->setVector(b_nh);
+    if (hqp.size() == 0)
+      hqp.resize(1);
+    hqp[0].push_back(tsid::solvers::aligned_pair<double, std::shared_ptr<tsid::math::ConstraintBase> >(1.0, eq_nh));
+  }
+
+  // Solve using the possibly-augmented HQP data
+  last_solution_ = solver_.solve(hqp);
   assert(last_solution_.status == tsid::solvers::HQPStatus::HQP_STATUS_OPTIMAL);
   tau_res = formulation_.getActuatorForces(last_solution_);
 
-  const double wheel_radius = 0.0762;
-  for (std::size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); foot_nb++)
-  {
-    if (!active_tsid_contacts_[foot_nb])
-      continue;
-    const std::string & frame_name = model_handler_.getFootFrameName(foot_nb);
-    if (frame_name.find("wheel") == std::string::npos)
-      continue;
+  // Legacy feed-forward torque from contact forces for wheels:
+  // If the user did not register actuated-rolling constraints, add a small
+  // feed-forward torque computed from contact forces so wheels slightly
+  // over-actuate relative to the contact moment (avoid wheel lag).
+  // if (rolling_constraints_.empty())
+  // {
+    const double wheel_radius = settings_.wheel_radius; // use settings-provided radius
+    const double feedforward_scale = settings_.ff_wheel_scale; // use settings-provided scale
+    for (std::size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); foot_nb++)
+    {
+      if (!active_tsid_contacts_[foot_nb])
+        continue;
+      const std::string & frame_name = model_handler_.getFootFrameName(foot_nb);
+      if (frame_name.find("wheel") == std::string::npos)
+        continue;
 
-    const Eigen::VectorXd f = formulation_.getContactForces(frame_name, last_solution_);
-    if (f.size() < 3)
-      continue;
-    const Eigen::Vector3d f_world = f.head<3>();
+      const Eigen::VectorXd f = formulation_.getContactForces(frame_name, last_solution_);
+      if (f.size() < 3)
+        continue;
+      const Eigen::Vector3d f_world = f.head<3>();
 
-    const pinocchio::FrameIndex frame_id = model_handler_.getFootFrameId(foot_nb);
-    const pinocchio::JointIndex joint_id = model.frames[frame_id].parentJoint;
-    const int idx_v = model.joints[joint_id].idx_v();
-    const int nv_joint = model.joints[joint_id].nv();
-    if (nv_joint != 1)
-      continue;
+      const pinocchio::FrameIndex frame_id = model_handler_.getFootFrameId(foot_nb);
+      const pinocchio::JointIndex joint_id = model.frames[frame_id].parentJoint;
+      const int idx_v = model.joints[joint_id].idx_v();
+      const int nv_joint = model.joints[joint_id].nv();
+      if (nv_joint != 1)
+        continue;
 
-    const pinocchio::SE3 & foot_pose = data_handler_.getFootPose(foot_nb);
-    const Eigen::Vector3d axis_world = foot_pose.rotation() * Eigen::Vector3d::UnitY();
-    const Eigen::Vector3d r_world = -wheel_radius * (foot_pose.rotation() * Eigen::Vector3d::UnitZ());
-    const double tau_ff = (r_world.cross(f_world)).dot(axis_world);
-    tau_res[idx_v - 6] += tau_ff;
+      const pinocchio::SE3 & foot_pose = data_handler_.getFootPose(foot_nb);
+      const Eigen::Vector3d axis_world = foot_pose.rotation() * Eigen::Vector3d::UnitY();
+  const Eigen::Vector3d r_world = -wheel_radius * (foot_pose.rotation() * Eigen::Vector3d::UnitZ());
+      const double tau_ff = (r_world.cross(f_world)).dot(axis_world);
+      // actuator index in tau_res
+      const int actuator_index = idx_v - 6;
+      if (actuator_index >= 0 && actuator_index < static_cast<int>(tau_res.size()))
+        tau_res[actuator_index] += feedforward_scale * tau_ff;
+
+      std::cout << "[KinoID] wheel " << frame_name << " tau_ff=" << tau_ff
+          << " scale=" << feedforward_scale << " add=" << (feedforward_scale * tau_ff) << std::endl;
+    }
   }
-}
+// }
 
 void KinodynamicsID::getAccelerations(Eigen::Ref<Eigen::VectorXd> ddq)
 {
