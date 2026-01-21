@@ -11,6 +11,7 @@ from simple_mpc import (
 )
 import example_robot_data as erd
 import pinocchio as pin
+import pybullet as p
 from example_robot_data.robots_loader import ROBOTS, RobotLoader
 import time
 import copy
@@ -60,18 +61,52 @@ w_legpos = [1, 1, 1]
 
 w_basevel = [10, 10, 10, 10, 10, 10]
 w_legvel = [0.1, 0.1, 0.1]
-w_x = np.array(w_basepos + w_legpos * 4 + w_basevel + w_legvel * 4)
-w_x = np.diag(w_x)
+model = model_handler.getModel()
+wheel_joints = [
+    "FL_wheel_joint",
+    "FR_wheel_joint",
+    "RL_wheel_joint",
+    "RR_wheel_joint",
+]
+wheel_q_indices = []
+wheel_v_indices = []
+wheel_u_indices = []
+wheel_meas_indices = []
+wheel_vel_limit = 100.0 * 2.0 * np.pi / 60.0
+wheel_target_vel = 10.0 * 2.0 * np.pi / 60.0
+wheel_radius = 0.0762
+joint_names_complete = list(model.names)[2:]
+for joint_name in wheel_joints:
+    joint_id = model.getJointId(joint_name)
+    idx_q = model.joints[joint_id].idx_q
+    idx_v = model.joints[joint_id].idx_v
+    nq_joint = model.joints[joint_id].nq
+    nv_joint = model.joints[joint_id].nv
+    wheel_q_indices.extend(range(idx_q, idx_q + nq_joint))
+    wheel_v_indices.extend(range(idx_v, idx_v + nv_joint))
+    wheel_u_indices.extend(range(idx_v - 6, idx_v - 6 + nv_joint))
+    wheel_meas_indices.append(6 + joint_names_complete.index(joint_name))
+    model.velocityLimit[idx_v : idx_v + nv_joint] = wheel_vel_limit
+
+w_q = np.zeros(model.nv)
+w_v = np.zeros(model.nv)
+w_q[:6] = w_basepos
+w_v[:6] = w_basevel
+w_q[6:] = w_legpos[0]
+w_v[6:] = w_legvel[0]
+for joint_name in wheel_joints:
+    joint_id = model.getJointId(joint_name)
+    idx_v = model.joints[joint_id].idx_v
+    nv_joint = model.joints[joint_id].nv
+
+w_x = np.diag(np.concatenate((w_q, w_v)))
 w_linforce = np.array([0.01, 0.01, 0.01])
-w_u = np.concatenate(
-    (
-        w_linforce,
-        w_linforce,
-        w_linforce,
-        w_linforce,
-        np.ones(model_handler.getModel().nv - 6) * 1e-5,
-    )
-)
+w_u_joints = np.ones(model.nv - 6) * 1e-5
+for joint_name in wheel_joints:
+    joint_id = model.getJointId(joint_name)
+    idx_v = model.joints[joint_id].idx_v
+    nv_joint = model.joints[joint_id].nv
+w_u = np.concatenate((w_linforce, w_linforce, w_linforce, w_linforce, w_u_joints))
 w_u = np.diag(w_u)
 w_LFRF = 2000
 w_cent_lin = np.array([0.0, 0.0, 1])
@@ -80,6 +115,9 @@ w_cent = np.diag(np.concatenate((w_cent_lin, w_cent_ang)))
 w_centder_lin = np.ones(3) * 0.0
 w_centder_ang = np.ones(3) * 0.1
 w_centder = np.diag(np.concatenate((w_centder_lin, w_centder_ang)))
+
+qmin = model_handler.getModel().lowerPositionLimit[7:]
+qmax = model_handler.getModel().upperPositionLimit[7:]
 
 problem_conf = dict(
     timestep=dt_mpc,
@@ -90,8 +128,8 @@ problem_conf = dict(
     gravity=gravity,
     force_size=3,
     w_frame=np.eye(3) * w_LFRF,
-    qmin=model_handler.getModel().lowerPositionLimit[7:],
-    qmax=model_handler.getModel().upperPositionLimit[7:],
+    qmin=qmin,
+    qmax=qmax,
     mu=0.8,
     Lfoot=0.01,
     Wfoot=0.01,
@@ -148,10 +186,13 @@ contact_phase_lift = {
     "RL_wheel": False,
     "RR_wheel": False,
 }
-contact_phases = [contact_phase_quadru] * T_ds
-contact_phases += [contact_phase_lift_FL] * T_ss
-contact_phases += [contact_phase_quadru] * T_ds
-contact_phases += [contact_phase_lift_FR] * T_ss
+# contact_phases = [contact_phase_quadru] * T_ds
+# contact_phases += [contact_phase_lift_FL] * T_ss
+# contact_phases += [contact_phase_quadru] * T_ds
+# contact_phases += [contact_phase_lift_FR] * T_ss
+
+contact_phases = [contact_phase_quadru]
+
 mpc.generateCycleHorizon(contact_phases)
 
 """ Interpolation """
@@ -217,9 +258,12 @@ solve_time = []
 L_measured = []
 
 v = np.zeros(6)
-v[0] = 0.2
+v[0] = wheel_target_vel * wheel_radius
 mpc.velocity_base = v
-for step in range(300):
+forward_speed_slider = p.addUserDebugParameter("forward_speed", -1.0, 1.0, v[0])
+for step in range(3000):
+    v[0] = p.readUserDebugParameter(forward_speed_slider)
+    mpc.velocity_base = v
     # print("Time " + str(step))
     land_LF = mpc.getFootLandCycle("FL_wheel")
     land_RF = mpc.getFootLandCycle("RL_wheel")
@@ -307,6 +351,13 @@ for step in range(300):
 
         kino_ID.setTarget(q_interp, v_interp, acc_interp, contact_states, force_interp)
         tau_cmd = kino_ID.solve(t, q_meas, v_meas)
+
+        print(
+            "wheel vel:",
+            v_meas[wheel_meas_indices],
+            "wheel tau:",
+            tau_cmd[wheel_u_indices],
+        )
 
         device.execute(tau_cmd)
         u_multibody.append(copy.deepcopy(tau_cmd))
