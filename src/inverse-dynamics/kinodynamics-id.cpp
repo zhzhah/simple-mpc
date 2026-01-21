@@ -1,4 +1,6 @@
 #include <simple-mpc/inverse-dynamics/kinodynamics-id.hpp>
+#include <pinocchio/algorithm/frames.hpp>
+#include <iostream>
 #include <tsid/contacts/contact-6d.hpp>
 #include <tsid/contacts/contact-point.hpp>
 
@@ -124,6 +126,9 @@ void KinodynamicsID::setTarget(
   const std::vector<bool> & contact_state_target,
   const std::vector<TargetContactForce> & f_target)
 {
+  q_target_ = q_target;
+  v_target_ = v_target;
+  a_target_ = a_target;
   data_handler_.updateInternalData(q_target, v_target, false);
 
   // Posture task
@@ -182,6 +187,7 @@ void KinodynamicsID::setTarget(
       }
     }
   }
+
   solver_.resize(formulation_.nVar(), formulation_.nEq(), formulation_.nIn());
 }
 
@@ -191,6 +197,11 @@ void KinodynamicsID::solve(
   const Eigen::Ref<const Eigen::VectorXd> & v_meas,
   Eigen::Ref<Eigen::VectorXd> tau_res)
 {
+  const pinocchio::Model & model = model_handler_.getModel();
+  pinocchio::Data data_target(model);
+  pinocchio::forwardKinematics(model, data_target, q_target_);
+  pinocchio::updateFramePlacements(model, data_target);
+
   // Update contact position based on the real robot foot placement
   data_handler_.updateInternalData(q_meas, v_meas, false);
   for (std::size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); foot_nb++)
@@ -218,6 +229,18 @@ void KinodynamicsID::solve(
 
   // Convert robot base vel/acc from local to world-aligned frame using actual robot pose
   const pinocchio::SE3 oMb_rotation(data_handler_.getBaseFramePose().rotation(), Eigen::Vector3d::Zero());
+
+  const int nq_actuated = robot_.nq_actuated();
+  const int na = robot_.na();
+  const Eigen::VectorXd q_ref = q_target_.tail(nq_actuated);
+  const Eigen::VectorXd v_ref = v_target_.tail(na);
+  const Eigen::VectorXd a_ref = a_target_.tail(na);
+  const Eigen::VectorXd q_meas_act = q_meas.tail(nq_actuated);
+  const Eigen::VectorXd v_meas_act = v_meas.tail(na);
+  const Eigen::VectorXd ddq_des =
+    a_ref + postureTask_->Kp().cwiseProduct(q_ref - q_meas_act) +
+    postureTask_->Kd().cwiseProduct(v_ref - v_meas_act);
+  std::cout << "ID ddq_des: " << ddq_des.transpose() << std::endl;
   const pinocchio::Motion v_world_aligned{oMb_rotation.act(pinocchio::Motion(targetVelBase_))};
   const pinocchio::Motion a_world_aligned{oMb_rotation.act(pinocchio::Motion(targetAccBase_))};
   sampleBase_.setDerivative(v_world_aligned.toVector());
@@ -229,6 +252,34 @@ void KinodynamicsID::solve(
   last_solution_ = solver_.solve(solver_data);
   assert(last_solution_.status == tsid::solvers::HQPStatus::HQP_STATUS_OPTIMAL);
   tau_res = formulation_.getActuatorForces(last_solution_);
+
+  const double wheel_radius = 0.0762;
+  for (std::size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); foot_nb++)
+  {
+    if (!active_tsid_contacts_[foot_nb])
+      continue;
+    const std::string & frame_name = model_handler_.getFootFrameName(foot_nb);
+    if (frame_name.find("wheel") == std::string::npos)
+      continue;
+
+    const Eigen::VectorXd f = formulation_.getContactForces(frame_name, last_solution_);
+    if (f.size() < 3)
+      continue;
+    const Eigen::Vector3d f_world = f.head<3>();
+
+    const pinocchio::FrameIndex frame_id = model_handler_.getFootFrameId(foot_nb);
+    const pinocchio::JointIndex joint_id = model.frames[frame_id].parentJoint;
+    const int idx_v = model.joints[joint_id].idx_v();
+    const int nv_joint = model.joints[joint_id].nv();
+    if (nv_joint != 1)
+      continue;
+
+    const pinocchio::SE3 & foot_pose = data_handler_.getFootPose(foot_nb);
+    const Eigen::Vector3d axis_world = foot_pose.rotation() * Eigen::Vector3d::UnitY();
+    const Eigen::Vector3d r_world = -wheel_radius * (foot_pose.rotation() * Eigen::Vector3d::UnitZ());
+    const double tau_ff = (r_world.cross(f_world)).dot(axis_world);
+    tau_res[idx_v - 6] += tau_ff;
+  }
 }
 
 void KinodynamicsID::getAccelerations(Eigen::Ref<Eigen::VectorXd> ddq)

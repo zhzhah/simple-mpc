@@ -12,6 +12,12 @@ from simple_mpc import (
 import example_robot_data as erd
 import pinocchio as pin
 import pybullet as p
+
+
+def format_joints_4x4(vec):
+    if vec.size == 16:
+        return vec.reshape(4, 4)
+    return vec
 from example_robot_data.robots_loader import ROBOTS, RobotLoader
 import time
 import copy
@@ -203,12 +209,12 @@ interpolator = Interpolator(model_handler.getModel())
 """ Inverse Dynamics """
 kino_ID_settings = KinodynamicsIDSettings()
 kino_ID_settings.kp_base = 7.0
-kino_ID_settings.kp_posture = 10.0
-kino_ID_settings.kp_contact = 10.0
+kino_ID_settings.kp_posture = 50.0
+kino_ID_settings.kp_contact = 0.0
 kino_ID_settings.w_base = 100.0
-kino_ID_settings.w_posture = 1.0
+kino_ID_settings.w_posture = 10.0
 kino_ID_settings.w_contact_force = 1.0
-kino_ID_settings.w_contact_motion = 1.0
+kino_ID_settings.w_contact_motion = 0.0
 
 kino_ID = KinodynamicsID(model_handler, dt_simu, kino_ID_settings)
 
@@ -227,6 +233,13 @@ device.initializeJoints(
     model_handler.getReferenceState()[: model_handler.getModel().nq]
 )
 device.changeCamera(1.0, 60, -15, [0.6, -0.2, 0.5])
+
+wheel_link_names = ["FL_wheel", "FR_wheel", "RL_wheel", "RR_wheel"]
+wheel_link_ids = {}
+for link_id in range(p.getNumJoints(device.robotId)):
+    link_name = p.getJointInfo(device.robotId, link_id)[12].decode()
+    if link_name in wheel_link_names:
+        wheel_link_ids[link_name] = link_id
 
 q_meas, v_meas = device.measureState()
 x_measured = np.concatenate([q_meas, v_meas])
@@ -261,9 +274,13 @@ v = np.zeros(6)
 v[0] = wheel_target_vel * wheel_radius
 mpc.velocity_base = v
 forward_speed_slider = p.addUserDebugParameter("forward_speed", -1.0, 1.0, v[0])
+wheel_target_vel_prev = v[0] / wheel_radius
+wheel_pos_ref = None
+base_pos_ref = None
 for step in range(3000):
     v[0] = p.readUserDebugParameter(forward_speed_slider)
     mpc.velocity_base = v
+    wheel_target_vel = mpc.velocity_base[0] / wheel_radius
     # print("Time " + str(step))
     land_LF = mpc.getFootLandCycle("FL_wheel")
     land_RF = mpc.getFootLandCycle("RL_wheel")
@@ -345,19 +362,78 @@ for step in range(3000):
         q_interp = xs_interp[: mpc.getModelHandler().getModel().nq]
         v_interp = xs_interp[mpc.getModelHandler().getModel().nq :]
         force_interp = [force_interp[i, :] for i in range(4)]
+        q_interp = model_handler.getReferenceState()[:nq].copy()
+        v_interp = np.zeros(nv)
+        acc_interp = np.zeros(nv)
+        contact_states = [True] * nk
+        fz = -0.25 * model_handler.getMass() * gravity[2]
+        force_interp = [np.array([0.0, 0.0, fz])] * nk
 
         q_meas, v_meas = device.measureState()
         x_measured = np.concatenate([q_meas, v_meas])
 
+        v_interp[wheel_v_indices] = wheel_target_vel
+        v_interp[:6] = mpc.velocity_base
+        if base_pos_ref is None:
+            base_pos_ref = q_interp[:3].copy()
+        else:
+            base_pos_ref = base_pos_ref + v_interp[:3] * dt_simu
+        q_interp[:3] = base_pos_ref
+ 
+        if wheel_pos_ref is None:
+            wheel_pos_ref = q_interp[wheel_q_indices].copy()
+        else:
+            wheel_pos_ref = wheel_pos_ref + wheel_target_vel * dt_simu
+        q_interp[wheel_q_indices] = wheel_pos_ref
+
+        # Temporary test: override MPC targets with fixed ID targets and gravity compensation
+        
+
         kino_ID.setTarget(q_interp, v_interp, acc_interp, contact_states, force_interp)
         tau_cmd = kino_ID.solve(t, q_meas, v_meas)
 
-        print(
-            "wheel vel:",
-            v_meas[wheel_meas_indices],
-            "wheel tau:",
-            tau_cmd[wheel_u_indices],
-        )
+        contact_forces = {name: np.zeros(3) for name in wheel_link_names}
+        for cp in p.getContactPoints(bodyA=device.robotId):
+            link_a = cp[3]
+            if link_a in wheel_link_ids.values():
+                normal = np.array(cp[7])
+                normal_force = cp[9]
+                fric1 = cp[10]
+                fric_dir1 = np.array(cp[11])
+                fric2 = cp[12]
+                fric_dir2 = np.array(cp[13])
+                f = normal * normal_force + fric_dir1 * fric1 + fric_dir2 * fric2
+                for name, lid in wheel_link_ids.items():
+                    if lid == link_a:
+                        contact_forces[name] += f
+                        break
+
+        nq = mpc.getModelHandler().getModel().nq
+        nv = mpc.getModelHandler().getModel().nv
+
+        print("ID input:")
+        print("base q", q_interp[:7])
+        print("base v", v_interp[:6])
+        print("base a", acc_interp[:6])
+        print("joints q", format_joints_4x4(q_interp[7:nq]))
+        print("joints v", format_joints_4x4(v_interp[6:nv]))
+        print("joints a", format_joints_4x4(acc_interp[6:nv]))
+        print("meas base q", q_meas[:7])
+        print("meas base v", v_meas[:6])
+        print("meas joints q", format_joints_4x4(q_meas[7:nq]))
+        print("meas joints v", format_joints_4x4(v_meas[6:nv]))
+        print("")
+        print("MPC output:")
+        print("x0 base q", xss[0][:7])
+        print("x0 base v", xss[0][nq : nq + 6])
+        print("x0 joints q", format_joints_4x4(xss[0][7:nq]))
+        print("x0 joints v", format_joints_4x4(xss[0][nq + 6 : nq + nv]))
+        print("u0 force", forces0.reshape(4, 3))
+        print("u0 joints acc", format_joints_4x4(a0[6:]))
+        print("tau_cmd", tau_cmd)
+        print("contact force meas", [contact_forces[name] for name in wheel_link_names])
+        print("contact force mpc", force_interp)
+        print("")
 
         device.execute(tau_cmd)
         u_multibody.append(copy.deepcopy(tau_cmd))

@@ -87,6 +87,9 @@ namespace simple_mpc
     tsid::trajectories::TrajectorySample sampleBase_;
     pinocchio::Motion targetVelBase_;
     pinocchio::Motion targetAccBase_;
+    Eigen::VectorXd q_target_;
+    Eigen::VectorXd v_target_;
+    Eigen::VectorXd a_target_;
   };
 
 } // namespace simple_mpc
