@@ -45,6 +45,7 @@ namespace simple_mpc
     /// (J_modified * ddq = -dotJ * qdot)
     void addNonHolonomicRollingConstraint(const std::string &contact_frame_name, double radius);
 
+// ...
     struct Settings
     {
 

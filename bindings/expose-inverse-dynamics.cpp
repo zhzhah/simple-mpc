@@ -57,7 +57,7 @@ namespace simple_mpc
       self.setTarget(com_position, com_velocity, feet_pose, feet_velocity, contact_state_target, f_target);
     }
 
-    void exposeInverseDynamics()
+   void exposeInverseDynamics()
     {
       bp::class_<KinodynamicsID::Settings>("KinodynamicsIDSettings", bp::init<>(bp::args("self")))
         .def_readwrite("friction_coefficient", &KinodynamicsID::Settings::friction_coefficient)
@@ -65,13 +65,13 @@ namespace simple_mpc
         .def_readwrite("contact_weight_ratio_min", &KinodynamicsID::Settings::contact_weight_ratio_min)
         .def_readwrite("kp_base", &KinodynamicsID::Settings::kp_base)
         .def_readwrite("kp_posture", &KinodynamicsID::Settings::kp_posture)
-  .def_readwrite("kp_posture_wheel", &KinodynamicsID::Settings::kp_posture_wheel)
+        .def_readwrite("kp_posture_wheel", &KinodynamicsID::Settings::kp_posture_wheel)
         .def_readwrite("kp_contact", &KinodynamicsID::Settings::kp_contact)
-  .def_readwrite("wheel_radius", &KinodynamicsID::Settings::wheel_radius)
-  .def_readwrite("ff_wheel_scale", &KinodynamicsID::Settings::ff_wheel_scale)
+        .def_readwrite("wheel_radius", &KinodynamicsID::Settings::wheel_radius)
+        .def_readwrite("ff_wheel_scale", &KinodynamicsID::Settings::ff_wheel_scale)
         .def_readwrite("w_base", &KinodynamicsID::Settings::w_base)
         .def_readwrite("w_posture", &KinodynamicsID::Settings::w_posture)
-  .def_readwrite("w_posture_wheel", &KinodynamicsID::Settings::w_posture_wheel)
+        .def_readwrite("w_posture_wheel", &KinodynamicsID::Settings::w_posture_wheel)
         .def_readwrite("w_contact_motion", &KinodynamicsID::Settings::w_contact_motion)
         .def_readwrite("w_contact_force", &KinodynamicsID::Settings::w_contact_force)
         .def_readwrite("contact_motion_equality", &KinodynamicsID::Settings::contact_motion_equality)
@@ -80,9 +80,12 @@ namespace simple_mpc
       bp::class_<KinodynamicsID, boost::noncopyable>(
         "KinodynamicsID", bp::init<const simple_mpc::RobotModelHandler &, double, const KinodynamicsID::Settings>(
                             bp::args("self", "model_handler", "control_dt", "settings")))
-        .def("setTarget", &KinodynamicsID::setTarget)
+        .def("setTarget", &KinodynamicsID::setTarget) // <--- 注意这里千万不能有分号
+        .def("addNonHolonomicRollingConstraint", &KinodynamicsID::addNonHolonomicRollingConstraint,
+             bp::args("self", "contact_frame_name", "radius"),
+             "Add a non-holonomic rolling constraint for a wheel.")
         .def("solve", &solveKinoProxy)
-        .def("getAccelerations", &getAccelerationsKinoProxy);
+        .def("getAccelerations", &getAccelerationsKinoProxy); // <--- 分号只能在这最后一行
 
       bp::class_<CentroidalID::Settings, bp::bases<KinodynamicsID::Settings>>(
         "CentroidalIDSettings", bp::init<>(bp::args("self")))

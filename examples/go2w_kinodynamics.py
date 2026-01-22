@@ -41,6 +41,15 @@ if "standing" not in robot_wrapper.model.referenceConfigurations:
     robot_wrapper.model.referenceConfigurations["standing"] = pin.neutral(
         robot_wrapper.model
     )
+# 手动设置初始位姿：用欧拉角计算四元数
+base_pos = np.array([0.0, 0.0, 0.385])
+base_rpy = np.array([0.0, 0.0, 0.0])  # roll, pitch, yaw
+R_base = pin.rpy.rpyToMatrix(base_rpy[0], base_rpy[1], base_rpy[2])
+q_base = pin.Quaternion(R_base)
+q_init = robot_wrapper.model.referenceConfigurations["standing"].copy()
+q_init[:3] = base_pos
+q_init[3:7] = q_base.coeffs()
+robot_wrapper.model.referenceConfigurations["standing"] = q_init
 
 # Create Model and Data handler
 model_handler = RobotModelHandler(robot_wrapper.model, "standing", base_joint_name)
@@ -208,24 +217,27 @@ interpolator = Interpolator(model_handler.getModel())
 
 """ Inverse Dynamics """
 kino_ID_settings = KinodynamicsIDSettings()
-kino_ID_settings.kp_base = 7.0
-kino_ID_settings.kp_posture = 10.0
+kino_ID_settings.kp_base = 15.0
+kino_ID_settings.kp_posture = 30.0
 kino_ID_settings.kp_contact = 0.0
 kino_ID_settings.w_base = 100.0
 kino_ID_settings.w_posture = 10.0
 kino_ID_settings.w_contact_force = 1.0
 kino_ID_settings.w_contact_motion = 0.0
 # Wheel-specific posture gains/weight (if equal to the above, behavior remains unchanged)
-kino_ID_settings.kp_posture_wheel = 0.0
-kino_ID_settings.w_posture_wheel = 0.0
+kino_ID_settings.kp_posture_wheel = 0.001
+kino_ID_settings.w_posture_wheel = 0.001
 # Wheel physical settings
 kino_ID_settings.wheel_radius = wheel_radius
 kino_ID_settings.ff_wheel_scale = 1.0
 # Temporarily disable non-holonomic rolling constraints for testing
 # (set to False to check whether they cause an abrupt exit)
-kino_ID_settings.enable_nonholonomic = False
+kino_ID_settings.enable_nonholonomic = True
 kino_ID = KinodynamicsID(model_handler, dt_simu, kino_ID_settings)
-
+kino_ID.addNonHolonomicRollingConstraint("FL_wheel", wheel_radius)
+kino_ID.addNonHolonomicRollingConstraint("FR_wheel", wheel_radius)
+kino_ID.addNonHolonomicRollingConstraint("RL_wheel", wheel_radius)
+kino_ID.addNonHolonomicRollingConstraint("RR_wheel", wheel_radius)
 
 """ Initialize simulation"""
 device = BulletRobot(
@@ -242,6 +254,11 @@ device.initializeJoints(
 )
 device.changeCamera(1.0, 60, -15, [0.6, -0.2, 0.5])
 
+# 机身系速度指令（来自可视化滑条）
+v_body_cmd = np.zeros(6)
+v_world_cmd = np.zeros(6)
+v_body_cmd[0] = wheel_target_vel * wheel_radius
+
 wheel_link_names = ["FL_wheel", "FR_wheel", "RL_wheel", "RR_wheel"]
 wheel_link_ids = {}
 for link_id in range(p.getNumJoints(device.robotId)):
@@ -249,7 +266,12 @@ for link_id in range(p.getNumJoints(device.robotId)):
     if link_name in wheel_link_names:
         wheel_link_ids[link_name] = link_id
 
+x_measured = None
 q_meas, v_meas = device.measureState()
+base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
+v_world_cmd[:3] = base_R_world @ v_body_cmd[:3]
+v_world_cmd[3:6] = base_R_world @ v_body_cmd[3:6]
+mpc.velocity_base = v_world_cmd
 x_measured = np.concatenate([q_meas, v_meas])
 
 device.showQuadrupedFeet(
@@ -278,17 +300,35 @@ com_measured = []
 solve_time = []
 L_measured = []
 
-v = np.zeros(6)
-v[0] = wheel_target_vel * wheel_radius
-mpc.velocity_base = v
-forward_speed_slider = p.addUserDebugParameter("forward_speed", -1.0, 1.0, v[0])
-wheel_target_vel_prev = v[0] / wheel_radius
+mpc.velocity_base = v_world_cmd
+forward_speed_slider = p.addUserDebugParameter("forward_speed_body", -1.0, 1.0, v_body_cmd[0])
+yaw_rate_slider = p.addUserDebugParameter("yaw_rate_body", -1.0, 1.0, 0.0)
+# Simulation control: use keyboard keys instead of sliders
+# 'p' toggles pause/resume, 'n' single-steps one outer iteration
+paused = True  # start paused as requested
+prev_step_pressed = False
+wheel_target_vel_prev = v_body_cmd[0] / wheel_radius
 wheel_pos_ref = None
 base_pos_ref = None
-for step in range(3000):
-    v[0] = p.readUserDebugParameter(forward_speed_slider)
-    mpc.velocity_base = v
-    wheel_target_vel = mpc.velocity_base[0] / wheel_radius
+for step in range(300000):
+    v_body_cmd[0] = p.readUserDebugParameter(forward_speed_slider)
+    v_body_cmd[5] = p.readUserDebugParameter(yaw_rate_slider)
+    # 将机身系线速度/角速度转换到世界系，供 MPC 使用
+    v_world_cmd[:3] = base_R_world @ v_body_cmd[:3]
+    v_world_cmd[3:6] = base_R_world @ v_body_cmd[3:6]
+    mpc.velocity_base = v_world_cmd
+    wheel_target_vel = v_body_cmd[0] / wheel_radius
+    # Keyboard control: 'p' toggle pause, 'n' single-step
+    events = p.getKeyboardEvents()
+    if ord('p') in events and events[ord('p')] & p.KEY_WAS_TRIGGERED:
+        paused = not paused
+        print("[UI] paused =", paused)
+    step_pressed = False
+    if ord('n') in events and events[ord('n')] & p.KEY_WAS_TRIGGERED:
+        step_pressed = True
+    if paused and not step_pressed:
+        time.sleep(0.01)
+        continue
     # print("Time " + str(step))
     land_LF = mpc.getFootLandCycle("FL_wheel")
     land_RF = mpc.getFootLandCycle("RL_wheel")
@@ -373,19 +413,19 @@ for step in range(3000):
         q_interp = model_handler.getReferenceState()[:nq].copy()
         v_interp = np.zeros(nv)
         acc_interp = np.zeros(nv)
-        contact_states = [True] * nk
         fz = -0.25 * model_handler.getMass() * gravity[2]
         force_interp = [np.array([0.0, 0.0, fz])] * nk
 
         q_meas, v_meas = device.measureState()
+        base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
         x_measured = np.concatenate([q_meas, v_meas])
 
         # v_interp[wheel_v_indices] = wheel_target_vel
-        v_interp[:6] = mpc.velocity_base
+        v_interp[:6] = v_body_cmd
         if base_pos_ref is None:
             base_pos_ref = q_interp[:3].copy()
         else:
-            base_pos_ref = base_pos_ref + v_interp[:3] * dt_simu
+            base_pos_ref = base_pos_ref + v_world_cmd[:3] * dt_simu
         q_interp[:3] = base_pos_ref
  
         # if wheel_pos_ref is None:
