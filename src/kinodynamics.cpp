@@ -11,6 +11,9 @@
 #include <aligator/modelling/multibody/frame-translation.hpp>
 #include <aligator/modelling/multibody/frame-velocity.hpp>
 
+#include "simple-mpc/soft-constraints.hpp"
+#include "simple-mpc/track-width.hpp"
+
 namespace simple_mpc
 {
   using namespace aligator;
@@ -35,6 +38,37 @@ namespace simple_mpc
     x0_ = model_handler_.getReferenceState();
     control_ref_.resize(nu_);
     control_ref_.setZero();
+
+    if (settings_.track_width_cstr)
+    {
+      const pinocchio::Model & model = model_handler_.getModel();
+      pinocchio::Data data(model);
+      const Eigen::VectorXd q_ref = x0_.head(model.nq);
+      const Eigen::VectorXd v_ref = x0_.tail(model.nv);
+      pinocchio::forwardKinematics(model, data, q_ref, v_ref);
+      pinocchio::updateFramePlacements(model, data);
+
+      const pinocchio::SE3 & oMb = data.oMf[model_handler_.getBaseFrameId()];
+      const Eigen::Matrix3d Rb = oMb.rotation();
+      const Eigen::Vector3d pb = oMb.translation();
+
+      auto y_in_base = [&](std::size_t foot_nb) -> double {
+        const pinocchio::FrameIndex fid = model_handler_.getFootFrameId(foot_nb);
+        const Eigen::Vector3d pw = data.oMf[fid].translation();
+        const Eigen::Vector3d pb_rel = Rb.transpose() * (pw - pb);
+        return pb_rel.y();
+      };
+
+      if (model_handler_.getFeetNb() >= 4)
+      {
+        const double y_fl = y_in_base(0);
+        const double y_fr = y_in_base(1);
+        const double y_rl = y_in_base(2);
+        const double y_rr = y_in_base(3);
+        track_width_front_ = y_fl - y_fr;
+        track_width_rear_ = y_rl - y_rr;
+      }
+    }
   }
 
   StageModel KinodynamicsOCP::createStage(
@@ -62,6 +96,35 @@ namespace simple_mpc
     rcost.addCost("centroidal_cost", QuadraticResidualCost(space, cent_mom, settings_.w_cent));
     rcost.addCost("centroidal_derivative_cost", QuadraticResidualCost(space, centder_mom, settings_.w_centder));
 
+    if (settings_.track_width_cstr && settings_.w_track_width > 0.0 && model_handler_.getFeetNb() >= 4)
+    {
+      TrackWidthResidual track_width_residual(
+        space.ndx(), nu_, model_handler_.getModel(), model_handler_.getBaseFrameId(),
+        model_handler_.getFootFrameId(0), model_handler_.getFootFrameId(1),
+        model_handler_.getFootFrameId(2), model_handler_.getFootFrameId(3),
+        track_width_front_, track_width_rear_);
+      const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(2, 2) * settings_.w_track_width;
+      rcost.addCost("track_width_cost", QuadraticResidualCost(space, track_width_residual, w));
+    }
+
+    Eigen::MatrixXd w_frame_mat;
+    if (settings_.force_size == 6)
+    {
+      if (settings_.w_frame.size() != 6)
+      {
+        throw std::runtime_error("w_frame must be size 6 when force_size == 6");
+      }
+      w_frame_mat = settings_.w_frame.asDiagonal();
+    }
+    else
+    {
+      if (settings_.w_frame.size() != 3)
+      {
+        throw std::runtime_error("w_frame must be size 3 when force_size == 3");
+      }
+      w_frame_mat = settings_.w_frame.asDiagonal();
+    }
+
     for (size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); foot_nb++)
     {
       const std::string & name = model_handler_.getFootFrameName(foot_nb);
@@ -70,7 +133,7 @@ namespace simple_mpc
         FramePlacementResidual frame_residual = FramePlacementResidual(
           space.ndx(), nu_, model_handler_.getModel(), contact_pose.at(name), model_handler_.getFootFrameId(foot_nb));
 
-        rcost.addCost(name + "_pose_cost", QuadraticResidualCost(space, frame_residual, settings_.w_frame));
+        rcost.addCost(name + "_pose_cost", QuadraticResidualCost(space, frame_residual, w_frame_mat));
       }
       else
       {
@@ -78,7 +141,7 @@ namespace simple_mpc
           space.ndx(), nu_, model_handler_.getModel(), contact_pose.at(name).translation(),
           model_handler_.getFootFrameId(foot_nb));
 
-        rcost.addCost(name + "_pose_cost", QuadraticResidualCost(space, frame_residual, settings_.w_frame));
+        rcost.addCost(name + "_pose_cost", QuadraticResidualCost(space, frame_residual, w_frame_mat));
       }
     }
 
@@ -115,9 +178,29 @@ namespace simple_mpc
           {
             CentroidalWrenchConeResidual wrench_residual =
               CentroidalWrenchConeResidual(space.ndx(), nu_, i, settings_.mu, settings_.Lfoot, settings_.Wfoot);
-            stm.addConstraint(wrench_residual, NegativeOrthant());
+            if (settings_.soft_constraints && settings_.w_soft_friction > 0.0)
+            {
+              const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(wrench_residual.nr, wrench_residual.nr)
+                                        * settings_.w_soft_friction;
+              rcost.addCost(
+                name + "_wrench_cone_soft", QuadraticResidualCost(space, wrench_residual, w));
+            }
+            else
+            {
+              stm.addConstraint(wrench_residual, NegativeOrthant());
+            }
           }
-          stm.addConstraint(frame_vel, EqualityConstraint());
+          if (settings_.soft_constraints && settings_.w_soft_contact_vel > 0.0)
+          {
+            const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(frame_vel.nr, frame_vel.nr)
+                                      * settings_.w_soft_contact_vel;
+            rcost.addCost(
+              name + "_contact_vel_soft", QuadraticResidualCost(space, frame_vel, w));
+          }
+          else
+          {
+            stm.addConstraint(frame_vel, EqualityConstraint());
+          }
         }
         else
         {
@@ -125,12 +208,43 @@ namespace simple_mpc
           {
             CentroidalFrictionConeResidual friction_residual =
               CentroidalFrictionConeResidual(space.ndx(), nu_, i, settings_.mu, 1e-4);
-            stm.addConstraint(friction_residual, NegativeOrthant());
+            if (settings_.soft_constraints && settings_.w_soft_friction > 0.0)
+            {
+              SoftFrictionConeResidual soft_friction_residual =
+                SoftFrictionConeResidual(space.ndx(), nu_, static_cast<int>(i), settings_.force_size, settings_.mu);
+              const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(2, 2) * settings_.w_soft_friction;
+              rcost.addCost(
+                name + "_friction_cone_soft", QuadraticResidualCost(space, soft_friction_residual, w));
+            }
+            else
+            {
+              stm.addConstraint(friction_residual, NegativeOrthant());
+            }
           }
-          std::vector<int> vel_id = {0, 1, 2};
+          std::vector<int> vel_id;
+          if (settings_.nonholonomic_rolling)
+          {
+            // Allow motion along local X (rolling direction), constrain lateral/normal.
+            vel_id = {1, 2};
+          }
+          else
+          {
+            vel_id = {0, 1, 2};
+          }
 
           FunctionSliceXpr vel_slice = FunctionSliceXpr(frame_vel, vel_id);
-          stm.addConstraint(vel_slice, EqualityConstraint());
+          if (settings_.soft_constraints && settings_.w_soft_contact_vel > 0.0)
+          {
+            const Eigen::MatrixXd w =
+              Eigen::MatrixXd::Identity(static_cast<int>(vel_id.size()), static_cast<int>(vel_id.size()))
+              * settings_.w_soft_contact_vel;
+            rcost.addCost(
+              name + "_contact_vel_soft", QuadraticResidualCost(space, vel_slice, w));
+          }
+          else
+          {
+            stm.addConstraint(vel_slice, EqualityConstraint());
+          }
           if (settings_.land_cstr and land_constraint.at(name))
           {
             std::vector<int> frame_id = {2};
@@ -141,7 +255,16 @@ namespace simple_mpc
 
             FunctionSliceXpr frame_slice = FunctionSliceXpr(frame_residual, frame_id);
 
-            stm.addConstraint(frame_slice, EqualityConstraint());
+            if (settings_.soft_constraints && settings_.w_soft_land > 0.0)
+            {
+              const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(1, 1) * settings_.w_soft_land;
+              rcost.addCost(
+                name + "_land_soft", QuadraticResidualCost(space, frame_slice, w));
+            }
+            else
+            {
+              stm.addConstraint(frame_slice, EqualityConstraint());
+            }
           }
         }
       }

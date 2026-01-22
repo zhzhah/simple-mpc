@@ -73,7 +73,7 @@ problem_conf = dict(
     w_centder=w_centder,
     gravity=gravity,
     force_size=3,
-    w_frame=np.eye(3) * w_LFRF,
+    w_frame=np.array([w_LFRF, w_LFRF, w_LFRF]),
     qmin=model_handler.getModel().lowerPositionLimit[7:],
     qmax=model_handler.getModel().upperPositionLimit[7:],
     mu=0.8,
@@ -82,6 +82,13 @@ problem_conf = dict(
     kinematics_limits=True,
     force_cone=False,
     land_cstr=False,
+    nonholonomic_rolling=False,
+    soft_constraints=False,
+    w_soft_contact_vel=0.0,
+    w_soft_friction=0.0,
+    w_soft_land=0.0,
+    track_width_cstr=False,
+    w_track_width=0.0,
 )
 T = 50
 
@@ -103,6 +110,7 @@ mpc_conf = dict(
     T_fly=T_ss,
     T_contact=T_ds,
     timestep=dt_mpc,
+    update_contact_ref=False,
 )
 
 mpc = MPC(mpc_conf, dynproblem)

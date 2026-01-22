@@ -14,7 +14,7 @@ namespace simple_mpc::python
     conf.w_u = bp::extract<Eigen::MatrixXd>(settings["w_u"]);
     conf.w_cent = bp::extract<Eigen::MatrixXd>(settings["w_cent"]);
     conf.w_centder = bp::extract<Eigen::MatrixXd>(settings["w_centder"]);
-    conf.w_frame = bp::extract<Eigen::MatrixXd>(settings["w_frame"]);
+    conf.w_frame = bp::extract<Eigen::VectorXd>(settings["w_frame"]);
 
     conf.gravity = bp::extract<Eigen::Vector3d>(settings["gravity"]);
     conf.force_size = bp::extract<int>(settings["force_size"]);
@@ -29,6 +29,13 @@ namespace simple_mpc::python
     conf.kinematics_limits = bp::extract<bool>(settings["kinematics_limits"]);
     conf.force_cone = bp::extract<bool>(settings["force_cone"]);
     conf.land_cstr = bp::extract<bool>(settings["land_cstr"]);
+    conf.nonholonomic_rolling = bp::extract<bool>(settings["nonholonomic_rolling"]);
+    conf.soft_constraints = bp::extract<bool>(settings["soft_constraints"]);
+    conf.w_soft_contact_vel = bp::extract<double>(settings["w_soft_contact_vel"]);
+    conf.w_soft_friction = bp::extract<double>(settings["w_soft_friction"]);
+    conf.w_soft_land = bp::extract<double>(settings["w_soft_land"]);
+    conf.track_width_cstr = bp::extract<bool>(settings["track_width_cstr"]);
+    conf.w_track_width = bp::extract<double>(settings["w_track_width"]);
 
     return new KinodynamicsOCP(conf, model_handler);
   }
@@ -53,6 +60,13 @@ namespace simple_mpc::python
     settings["kinematics_limits"] = conf.kinematics_limits;
     settings["force_cone"] = conf.force_cone;
     settings["land_cstr"] = conf.land_cstr;
+    settings["nonholonomic_rolling"] = conf.nonholonomic_rolling;
+    settings["soft_constraints"] = conf.soft_constraints;
+    settings["w_soft_contact_vel"] = conf.w_soft_contact_vel;
+    settings["w_soft_friction"] = conf.w_soft_friction;
+    settings["w_soft_land"] = conf.w_soft_land;
+    settings["track_width_cstr"] = conf.track_width_cstr;
+    settings["w_track_width"] = conf.w_track_width;
 
     return settings;
   }

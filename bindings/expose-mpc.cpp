@@ -40,6 +40,7 @@ namespace simple_mpc
       conf.T_fly = bp::extract<int>(settings["T_fly"]);
       conf.T_contact = bp::extract<int>(settings["T_contact"]);
       conf.timestep = bp::extract<double>(settings["timestep"]);
+      conf.update_contact_ref = bp::extract<bool>(settings["update_contact_ref"]);
 
       return new MPC{conf, problem};
     }
@@ -57,6 +58,7 @@ namespace simple_mpc
       settings["T_fly"] = conf.T_fly;
       settings["T_contact"] = conf.T_contact;
       settings["timestep"] = conf.timestep;
+      settings["update_contact_ref"] = conf.update_contact_ref;
 
       return settings;
     }

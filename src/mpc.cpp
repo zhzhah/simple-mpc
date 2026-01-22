@@ -277,6 +277,10 @@ namespace simple_mpc
 
   void MPC::updateStepTrackerReferences()
   {
+    const std::vector<bool> contact_states = ocp_handler_->getContactState(0);
+    std::vector<Eigen::Vector3d> com_refs;
+    com_refs.resize(ee_names_.size(), Eigen::Vector3d::Zero());
+
     for (auto const & name : ee_names_)
     {
       const size_t foot_nb = ocp_handler_->getModelHandler().getFootNb(name);
@@ -287,6 +291,22 @@ namespace simple_mpc
       bool update = true;
       if (foot_land_time < settings_.T_fly)
         update = false;
+      if (settings_.update_contact_ref)
+      {
+        if (foot_nb < contact_states.size() && contact_states[foot_nb])
+          update = true;
+      }
+
+      if (settings_.update_contact_ref && foot_nb < contact_states.size() && contact_states[foot_nb])
+      {
+        const pinocchio::SE3 ref_pose = data_handler_->getBaseFramePose() * relative_feet_poses_.at(name);
+        for (unsigned long time = 0; time < ocp_handler_->getSize(); time++)
+        {
+          setReferencePose(time, name, ref_pose);
+        }
+        com_refs[foot_nb] = ref_pose.translation();
+        continue;
+      }
 
       // Use the Raibert heuristics to compute the next foot pose
       twist_vect_[0] =
@@ -306,6 +326,7 @@ namespace simple_mpc
         pose.translation() = foot_trajectories_.getReference(name)[time];
         setReferencePose(time, name, pose);
       }
+      com_refs[foot_nb] = foot_trajectories_.getReference(name).back();
     }
 
     ocp_handler_->setReferenceState(ocp_handler_->getSize() - 1, x_reference_);
@@ -313,9 +334,9 @@ namespace simple_mpc
 
     Eigen::Vector3d com_ref;
     com_ref << 0, 0, 0;
-    for (auto const & name : ee_names_)
+    for (const auto & ref : com_refs)
     {
-      com_ref += foot_trajectories_.getReference(name).back();
+      com_ref += ref;
     }
     com_ref /= (double)ee_names_.size();
     com_ref[2] += com0_[2];

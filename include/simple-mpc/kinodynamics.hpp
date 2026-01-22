@@ -29,7 +29,7 @@ namespace simple_mpc
     // Cost function weights
     Eigen::MatrixXd w_x;       // State
     Eigen::MatrixXd w_u;       // Control
-    Eigen::MatrixXd w_frame;   // End effector placement
+    Eigen::VectorXd w_frame;   // End effector placement (per-axis weights)
     Eigen::MatrixXd w_cent;    // Centroidal momentum
     Eigen::MatrixXd w_centder; // Derivative of centroidal momentum
 
@@ -48,6 +48,13 @@ namespace simple_mpc
     bool kinematics_limits;
     bool force_cone;
     bool land_cstr;
+    bool nonholonomic_rolling;
+    bool soft_constraints;
+    double w_soft_contact_vel;
+    double w_soft_friction;
+    double w_soft_land;
+    bool track_width_cstr;
+    double w_track_width;
   };
 
   class KinodynamicsOCP : public OCPHandler
@@ -103,6 +110,8 @@ namespace simple_mpc
 
   protected:
     KinodynamicsSettings settings_;
+    double track_width_front_ = 0.0;
+    double track_width_rear_ = 0.0;
   };
 
 } // namespace simple_mpc

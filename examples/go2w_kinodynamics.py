@@ -43,7 +43,7 @@ if "standing" not in robot_wrapper.model.referenceConfigurations:
     )
 # 手动设置初始位姿：用欧拉角计算四元数
 base_pos = np.array([0.0, 0.0, 0.385])
-base_rpy = np.array([0.0, 0.0, 0.0])  # roll, pitch, yaw
+base_rpy = np.array([0.0, 0.0, 1.50])  # roll, pitch, yaw
 R_base = pin.rpy.rpyToMatrix(base_rpy[0], base_rpy[1], base_rpy[2])
 q_base = pin.Quaternion(R_base)
 q_init = robot_wrapper.model.referenceConfigurations["standing"].copy()
@@ -71,7 +71,7 @@ fref[2] = -model_handler.getMass() / nk * gravity[2]
 u0 = np.concatenate((fref, fref, fref, fref, np.zeros(model_handler.getModel().nv - 6)))
 dt_mpc = 0.01
 
-w_basepos = [0, 0, 100, 10, 10, 0]
+w_basepos = [0, 50, 100, 10, 10, 0]
 w_legpos = [1, 1, 1]
 
 w_basevel = [10, 10, 10, 10, 10, 10]
@@ -113,6 +113,7 @@ for joint_name in wheel_joints:
     joint_id = model.getJointId(joint_name)
     idx_v = model.joints[joint_id].idx_v
     nv_joint = model.joints[joint_id].nv
+    w_q[idx_v : idx_v + nv_joint] = 0.0
 
 w_x = np.diag(np.concatenate((w_q, w_v)))
 w_linforce = np.array([0.01, 0.01, 0.01])
@@ -131,8 +132,14 @@ w_centder_lin = np.ones(3) * 0.0
 w_centder_ang = np.ones(3) * 0.1
 w_centder = np.diag(np.concatenate((w_centder_lin, w_centder_ang)))
 
-qmin = model_handler.getModel().lowerPositionLimit[7:]
-qmax = model_handler.getModel().upperPositionLimit[7:]
+qmin = model_handler.getModel().lowerPositionLimit[7:].copy()
+qmax = model_handler.getModel().upperPositionLimit[7:].copy()
+for joint_name in wheel_joints:
+    joint_id = model.getJointId(joint_name)
+    idx_q = model.joints[joint_id].idx_q
+    nq_joint = model.joints[joint_id].nq
+    qmin[idx_q - 7 : idx_q - 7 + nq_joint] = -1e9
+    qmax[idx_q - 7 : idx_q - 7 + nq_joint] = 1e9
 
 problem_conf = dict(
     timestep=dt_mpc,
@@ -142,7 +149,7 @@ problem_conf = dict(
     w_centder=w_centder,
     gravity=gravity,
     force_size=3,
-    w_frame=np.eye(3) * w_LFRF,
+    w_frame=np.array([0.0, 0.0, 0.0]),
     qmin=qmin,
     qmax=qmax,
     mu=0.8,
@@ -151,6 +158,13 @@ problem_conf = dict(
     kinematics_limits=True,
     force_cone=False,
     land_cstr=False,
+    nonholonomic_rolling=True,
+    soft_constraints=True,
+    w_soft_contact_vel=20.0,
+    w_soft_friction=0.0,
+    w_soft_land=0.0,
+    track_width_cstr=True,
+    w_track_width=w_LFRF,
 )
 T = 50
 
@@ -172,9 +186,13 @@ mpc_conf = dict(
     T_fly=T_ss,
     T_contact=T_ds,
     timestep=dt_mpc,
+    update_contact_ref=True,
 )
 
 mpc = MPC(mpc_conf, dynproblem)
+
+debug_id = False
+debug_mpc_costs = True
 
 """ Define contact sequence throughout horizon"""
 contact_phase_quadru = {
@@ -269,8 +287,12 @@ for link_id in range(p.getNumJoints(device.robotId)):
 x_measured = None
 q_meas, v_meas = device.measureState()
 base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
-v_world_cmd[:3] = base_R_world @ v_body_cmd[:3]
-v_world_cmd[3:6] = base_R_world @ v_body_cmd[3:6]
+yaw = np.arctan2(base_R_world[1, 0], base_R_world[0, 0])
+cy = np.cos(yaw)
+sy = np.sin(yaw)
+R_yaw = np.array([[cy, -sy, 0.0], [sy, cy, 0.0], [0.0, 0.0, 1.0]])
+v_world_cmd[:3] = R_yaw @ v_body_cmd[:3]
+v_world_cmd[3:6] = R_yaw @ v_body_cmd[3:6]
 mpc.velocity_base = v_world_cmd
 x_measured = np.concatenate([q_meas, v_meas])
 
@@ -305,7 +327,7 @@ forward_speed_slider = p.addUserDebugParameter("forward_speed_body", -1.0, 1.0, 
 yaw_rate_slider = p.addUserDebugParameter("yaw_rate_body", -1.0, 1.0, 0.0)
 # Simulation control: use keyboard keys instead of sliders
 # 'p' toggles pause/resume, 'n' single-steps one outer iteration
-paused = True  # start paused as requested
+paused = False  # start paused as requested
 prev_step_pressed = False
 wheel_target_vel_prev = v_body_cmd[0] / wheel_radius
 wheel_pos_ref = None
@@ -313,10 +335,26 @@ base_pos_ref = None
 for step in range(300000):
     v_body_cmd[0] = p.readUserDebugParameter(forward_speed_slider)
     v_body_cmd[5] = p.readUserDebugParameter(yaw_rate_slider)
+    # 只允许机身系 x 方向速度与 yaw 角速度，禁止横向/竖向/翻滚俯仰速度
+    v_body_cmd[1] = 0.0
+    v_body_cmd[2] = 0.0
+    v_body_cmd[3] = 0.0
+    v_body_cmd[4] = 0.0
+    # 用当前机身姿态把机身系速度转换到世界系
+    q_meas, v_meas = device.measureState()
+    base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
+    yaw = np.arctan2(base_R_world[1, 0], base_R_world[0, 0])
+    cy = np.cos(yaw)
+    sy = np.sin(yaw)
+    R_yaw = np.array([[cy, -sy, 0.0], [sy, cy, 0.0], [0.0, 0.0, 1.0]])
     # 将机身系线速度/角速度转换到世界系，供 MPC 使用
-    v_world_cmd[:3] = base_R_world @ v_body_cmd[:3]
-    v_world_cmd[3:6] = base_R_world @ v_body_cmd[3:6]
+    v_world_cmd[:3] = R_yaw @ v_body_cmd[:3]
+    v_world_cmd[3:6] = R_yaw @ v_body_cmd[3:6]
     mpc.velocity_base = v_world_cmd
+    print("base q", q_meas[:7])
+    print("yaw(deg)", yaw * 180.0 / np.pi)
+    print("cmd body", v_body_cmd)
+    print("cmd yaw-only world", v_world_cmd)
     wheel_target_vel = v_body_cmd[0] / wheel_radius
     # Keyboard control: 'p' toggle pause, 'n' single-step
     events = p.getKeyboardEvents()
@@ -410,33 +448,12 @@ for step in range(300000):
         q_interp = xs_interp[: mpc.getModelHandler().getModel().nq]
         v_interp = xs_interp[mpc.getModelHandler().getModel().nq :]
         force_interp = [force_interp[i, :] for i in range(4)]
-        q_interp = model_handler.getReferenceState()[:nq].copy()
-        v_interp = np.zeros(nv)
-        acc_interp = np.zeros(nv)
-        fz = -0.25 * model_handler.getMass() * gravity[2]
-        force_interp = [np.array([0.0, 0.0, fz])] * nk
 
         q_meas, v_meas = device.measureState()
         base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
         x_measured = np.concatenate([q_meas, v_meas])
 
-        # v_interp[wheel_v_indices] = wheel_target_vel
-        v_interp[:6] = v_body_cmd
-        if base_pos_ref is None:
-            base_pos_ref = q_interp[:3].copy()
-        else:
-            base_pos_ref = base_pos_ref + v_world_cmd[:3] * dt_simu
-        q_interp[:3] = base_pos_ref
- 
-        # if wheel_pos_ref is None:
-        #     wheel_pos_ref = q_interp[wheel_q_indices].copy()
-        # else:
-        #     wheel_pos_ref = wheel_pos_ref + wheel_target_vel * dt_simu
-        # q_interp[wheel_q_indices] = wheel_pos_ref
-
-        # Temporary test: override MPC targets with fixed ID targets and gravity compensation
-        
-
+        # ID input uses MPC-interpolated state/force directly
         kino_ID.setTarget(q_interp, v_interp, acc_interp, contact_states, force_interp)
         tau_cmd = kino_ID.solve(t, q_meas, v_meas)
 
@@ -459,29 +476,104 @@ for step in range(300000):
         nq = mpc.getModelHandler().getModel().nq
         nv = mpc.getModelHandler().getModel().nv
 
-        print("ID input:")
-        print("base q", q_interp[:7])
-        print("base v", v_interp[:6])
-        print("base a", acc_interp[:6])
-        print("joints q", format_joints_4x4(q_interp[7:nq]))
-        print("joints v", format_joints_4x4(v_interp[6:nv]))
-        print("joints a", format_joints_4x4(acc_interp[6:nv]))
-        print("meas base q", q_meas[:7])
-        print("meas base v", v_meas[:6])
-        print("meas joints q", format_joints_4x4(q_meas[7:nq]))
-        print("meas joints v", format_joints_4x4(v_meas[6:nv]))
-        print("")
-        print("MPC output:")
-        print("x0 base q", xss[0][:7])
-        print("x0 base v", xss[0][nq : nq + 6])
-        print("x0 joints q", format_joints_4x4(xss[0][7:nq]))
-        print("x0 joints v", format_joints_4x4(xss[0][nq + 6 : nq + nv]))
-        print("u0 force", forces0.reshape(4, 3))
-        print("u0 joints acc", format_joints_4x4(a0[6:]))
-        print("tau_cmd", tau_cmd)
-        print("contact force meas", [contact_forces[name] for name in wheel_link_names])
-        print("contact force mpc", force_interp)
-        print("")
+        if debug_id:
+            print("ID input:")
+            print("base q", q_interp[:7])
+            print("base v", v_interp[:6])
+            print("base a", acc_interp[:6])
+            print("joints q", format_joints_4x4(q_interp[7:nq]))
+            print("joints v", format_joints_4x4(v_interp[6:nv]))
+            print("joints a", format_joints_4x4(acc_interp[6:nv]))
+            print("meas base q", q_meas[:7])
+            print("meas base v", v_meas[:6])
+            print("meas joints q", format_joints_4x4(q_meas[7:nq]))
+            print("meas joints v", format_joints_4x4(v_meas[6:nv]))
+            print("")
+            print("MPC output:")
+            print("x0 base q", xss[0][:7])
+            print("x0 base v", xss[0][nq : nq + 6])
+            print("x0 joints q", format_joints_4x4(xss[0][7:nq]))
+            print("x0 joints v", format_joints_4x4(xss[0][nq + 6 : nq + nv]))
+            print("u0 force", forces0.reshape(4, 3))
+            print("u0 joints acc", format_joints_4x4(a0[6:]))
+            print("tau_cmd", tau_cmd)
+            print("contact force meas", [contact_forces[name] for name in wheel_link_names])
+            print("contact force mpc", force_interp)
+            print("")
+
+        if debug_mpc_costs and sub_step == 0:
+            x0 = xss[0]
+            u0 = mpc.us[0]
+            try:
+                x_ref = mpc.ocp_handler.getReferenceState(0)
+                u_ref = mpc.ocp_handler.getReferenceControl(0)
+            except Exception:
+                x_ref = x0
+                u_ref = u0
+
+            q0 = x0[:nq]
+            v0 = x0[nq:]
+            q_ref = x_ref[:nq]
+            v_ref = x_ref[nq:]
+            dx_q = pin.difference(model, q_ref, q0)
+            dx_v = v0 - v_ref
+            dx = np.concatenate([dx_q, dx_v])
+            du = u0 - u_ref
+            state_cost = float(dx.T @ w_x @ dx)
+            control_cost = float(du.T @ w_u @ du)
+
+            model = mpc.getModelHandler().getModel()
+            data = pin.Data(model)
+            pin.forwardKinematics(model, data, x0[:nq], x0[nq:])
+            pin.updateFramePlacements(model, data)
+
+            foot_cost = 0.0
+            for name in wheel_link_names:
+                frame_id = mpc.getModelHandler().getFootFrameId(
+                    mpc.getModelHandler().getFootNb(name)
+                )
+                foot_pos = data.oMf[frame_id].translation
+                foot_ref = mpc.getReferencePose(0, name).translation
+                err = foot_pos - foot_ref
+                foot_cost += float(err.T @ np.diag(problem_conf["w_frame"]) @ err)
+
+            soft_contact_vel_cost = 0.0
+            soft_contact_vel_res = []
+            for name in wheel_link_names:
+                frame_id = mpc.getModelHandler().getFootFrameId(
+                    mpc.getModelHandler().getFootNb(name)
+                )
+                v_local = pin.getFrameVelocity(model, data, frame_id, pin.LOCAL).linear
+                if problem_conf["nonholonomic_rolling"]:
+                    res = v_local[1:3]
+                else:
+                    res = v_local[:3]
+                soft_contact_vel_res.append(res.copy())
+                soft_contact_vel_cost += float(
+                    problem_conf["w_soft_contact_vel"] * (res.T @ res)
+                )
+
+            soft_friction_cost = 0.0
+            soft_friction_res = []
+            for i in range(4):
+                fx, fy, fz = u0[i * force_size : i * force_size + 3]
+                r1 = np.sqrt(fx * fx + fy * fy) - problem_conf["mu"] * fz
+                r2 = -fz
+                res = np.array([max(0.0, r1), max(0.0, r2)])
+                soft_friction_res.append(res.copy())
+                soft_friction_cost += float(
+                    problem_conf["w_soft_friction"] * (res.T @ res)
+                )
+
+            print("[MPC costs]")
+            print("  state_cost", state_cost)
+            print("  control_cost", control_cost)
+            print("  foot_cost", foot_cost)
+            print("  soft_contact_vel_cost", soft_contact_vel_cost)
+            print("  soft_contact_vel_res", soft_contact_vel_res)
+            print("  soft_friction_cost", soft_friction_cost)
+            print("  soft_friction_res", soft_friction_res)
+            print("")
 
         device.execute(tau_cmd)
         u_multibody.append(copy.deepcopy(tau_cmd))

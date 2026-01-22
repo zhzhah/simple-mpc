@@ -112,6 +112,7 @@ mpc_conf = dict(
     T_fly=T_ss,
     T_contact=T_ds,
     timestep=problem_conf["timestep"],
+    update_contact_ref=False,
 )
 
 mpc = MPC(mpc_conf, dynproblem)

@@ -46,6 +46,7 @@ namespace simple_mpc
     int T_contact = 20;
     size_t T = 100;
     double timestep = 0.01;
+    bool update_contact_ref = false;
   };
 
   /**
