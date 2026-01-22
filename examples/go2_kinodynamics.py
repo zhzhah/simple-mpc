@@ -89,6 +89,9 @@ problem_conf = dict(
     w_soft_land=0.0,
     track_width_cstr=False,
     w_track_width=0.0,
+    foot_sum_cstr=False,
+    w_foot_sum=0.0,
+    foot_sum_z_offset=0.0,
 )
 T = 50
 

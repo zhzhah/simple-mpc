@@ -13,6 +13,7 @@
 
 #include "simple-mpc/soft-constraints.hpp"
 #include "simple-mpc/track-width.hpp"
+#include "simple-mpc/foot-sum.hpp"
 
 namespace simple_mpc
 {
@@ -69,6 +70,14 @@ namespace simple_mpc
         track_width_rear_ = y_rl - y_rr;
       }
     }
+
+    if (settings_.foot_sum_cstr)
+    {
+      if (model_handler_.getModel().nq >= 3)
+        foot_sum_target_ << 0.0, 0.0, x0_[2] - settings_.foot_sum_z_offset;
+      else
+        foot_sum_target_.setZero();
+    }
   }
 
   StageModel KinodynamicsOCP::createStage(
@@ -95,6 +104,20 @@ namespace simple_mpc
     rcost.addCost("control_cost", QuadraticControlCost(space, control_ref_, settings_.w_u));
     rcost.addCost("centroidal_cost", QuadraticResidualCost(space, cent_mom, settings_.w_cent));
     rcost.addCost("centroidal_derivative_cost", QuadraticResidualCost(space, centder_mom, settings_.w_centder));
+
+    if (settings_.foot_sum_cstr && settings_.w_foot_sum > 0.0)
+    {
+      std::vector<pinocchio::FrameIndex> foot_frames;
+      foot_frames.reserve(model_handler_.getFeetNb());
+      for (size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); foot_nb++)
+      {
+        foot_frames.push_back(model_handler_.getFootFrameId(foot_nb));
+      }
+      FootSumInBaseResidual foot_sum_residual(
+        space.ndx(), nu_, model_handler_.getModel(), model_handler_.getBaseFrameId(), foot_frames, foot_sum_target_);
+      const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(3, 3) * settings_.w_foot_sum;
+      rcost.addCost("foot_sum_in_base_cost", QuadraticResidualCost(space, foot_sum_residual, w));
+    }
 
     if (settings_.track_width_cstr && settings_.w_track_width > 0.0 && model_handler_.getFeetNb() >= 4)
     {

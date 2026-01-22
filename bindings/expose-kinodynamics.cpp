@@ -36,6 +36,9 @@ namespace simple_mpc::python
     conf.w_soft_land = bp::extract<double>(settings["w_soft_land"]);
     conf.track_width_cstr = bp::extract<bool>(settings["track_width_cstr"]);
     conf.w_track_width = bp::extract<double>(settings["w_track_width"]);
+    conf.foot_sum_cstr = bp::extract<bool>(settings["foot_sum_cstr"]);
+    conf.w_foot_sum = bp::extract<double>(settings["w_foot_sum"]);
+    conf.foot_sum_z_offset = bp::extract<double>(settings["foot_sum_z_offset"]);
 
     return new KinodynamicsOCP(conf, model_handler);
   }
@@ -67,6 +70,9 @@ namespace simple_mpc::python
     settings["w_soft_land"] = conf.w_soft_land;
     settings["track_width_cstr"] = conf.track_width_cstr;
     settings["w_track_width"] = conf.w_track_width;
+    settings["foot_sum_cstr"] = conf.foot_sum_cstr;
+    settings["w_foot_sum"] = conf.w_foot_sum;
+    settings["foot_sum_z_offset"] = conf.foot_sum_z_offset;
 
     return settings;
   }

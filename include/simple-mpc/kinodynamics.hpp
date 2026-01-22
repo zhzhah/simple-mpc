@@ -55,6 +55,9 @@ namespace simple_mpc
     double w_soft_land;
     bool track_width_cstr;
     double w_track_width;
+    bool foot_sum_cstr;
+    double w_foot_sum;
+    double foot_sum_z_offset;
   };
 
   class KinodynamicsOCP : public OCPHandler
@@ -112,6 +115,7 @@ namespace simple_mpc
     KinodynamicsSettings settings_;
     double track_width_front_ = 0.0;
     double track_width_rear_ = 0.0;
+    Eigen::Vector3d foot_sum_target_ = Eigen::Vector3d::Zero();
   };
 
 } // namespace simple_mpc

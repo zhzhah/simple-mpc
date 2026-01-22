@@ -43,7 +43,7 @@ if "standing" not in robot_wrapper.model.referenceConfigurations:
     )
 # 手动设置初始位姿：用欧拉角计算四元数
 base_pos = np.array([0.0, 0.0, 0.385])
-base_rpy = np.array([0.0, 0.0, 1.50])  # roll, pitch, yaw
+base_rpy = np.array([0.0, 0.0, -0.5])  # roll, pitch, yaw
 R_base = pin.rpy.rpyToMatrix(base_rpy[0], base_rpy[1], base_rpy[2])
 q_base = pin.Quaternion(R_base)
 q_init = robot_wrapper.model.referenceConfigurations["standing"].copy()
@@ -71,10 +71,10 @@ fref[2] = -model_handler.getMass() / nk * gravity[2]
 u0 = np.concatenate((fref, fref, fref, fref, np.zeros(model_handler.getModel().nv - 6)))
 dt_mpc = 0.01
 
-w_basepos = [0, 50, 100, 10, 10, 0]
+w_basepos = [0, 0, 100, 100, 10, 0]
 w_legpos = [1, 1, 1]
 
-w_basevel = [10, 10, 10, 10, 10, 10]
+w_basevel = [0, 0, 10, 10, 10, 10]
 w_legvel = [0.1, 0.1, 0.1]
 model = model_handler.getModel()
 wheel_joints = [
@@ -87,7 +87,7 @@ wheel_q_indices = []
 wheel_v_indices = []
 wheel_u_indices = []
 wheel_meas_indices = []
-wheel_vel_limit = 100.0 * 2.0 * np.pi / 60.0
+wheel_vel_limit = 3.0 * 100.0 * 2.0 * np.pi / 60.0
 wheel_target_vel = 10.0 * 2.0 * np.pi / 60.0
 wheel_radius = 0.0762
 joint_names_complete = list(model.names)[2:]
@@ -124,7 +124,7 @@ for joint_name in wheel_joints:
     nv_joint = model.joints[joint_id].nv
 w_u = np.concatenate((w_linforce, w_linforce, w_linforce, w_linforce, w_u_joints))
 w_u = np.diag(w_u)
-w_LFRF = 2000
+w_LFRF = 6000
 w_cent_lin = np.array([0.0, 0.0, 1])
 w_cent_ang = np.array([0.1, 0.1, 10])
 w_cent = np.diag(np.concatenate((w_cent_lin, w_cent_ang)))
@@ -165,6 +165,9 @@ problem_conf = dict(
     w_soft_land=0.0,
     track_width_cstr=True,
     w_track_width=w_LFRF,
+    foot_sum_cstr=True,
+    w_foot_sum=w_LFRF,
+    foot_sum_z_offset=wheel_radius,
 )
 T = 50
 
@@ -332,6 +335,12 @@ prev_step_pressed = False
 wheel_target_vel_prev = v_body_cmd[0] / wheel_radius
 wheel_pos_ref = None
 base_pos_ref = None
+q_meas, v_meas = device.measureState()
+current_ref_pos_x = q_meas[0]
+current_ref_pos_y = q_meas[1]
+initial_height = q_meas[2]
+base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
+current_ref_yaw = np.arctan2(base_R_world[1, 0], base_R_world[0, 0])
 for step in range(300000):
     v_body_cmd[0] = p.readUserDebugParameter(forward_speed_slider)
     v_body_cmd[5] = p.readUserDebugParameter(yaw_rate_slider)
@@ -340,16 +349,15 @@ for step in range(300000):
     v_body_cmd[2] = 0.0
     v_body_cmd[3] = 0.0
     v_body_cmd[4] = 0.0
-    # 用当前机身姿态把机身系速度转换到世界系
+    # 用当前机身姿态把机身系前进速度投影到世界系（只取 yaw）
     q_meas, v_meas = device.measureState()
     base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
     yaw = np.arctan2(base_R_world[1, 0], base_R_world[0, 0])
-    cy = np.cos(yaw)
-    sy = np.sin(yaw)
-    R_yaw = np.array([[cy, -sy, 0.0], [sy, cy, 0.0], [0.0, 0.0, 1.0]])
-    # 将机身系线速度/角速度转换到世界系，供 MPC 使用
-    v_world_cmd[:3] = R_yaw @ v_body_cmd[:3]
-    v_world_cmd[3:6] = R_yaw @ v_body_cmd[3:6]
+
+    v_world_cmd[:] = 0.0
+    v_world_cmd[0] = v_body_cmd[0] * np.cos(yaw)
+    v_world_cmd[1] = v_body_cmd[0] * np.sin(yaw)
+    v_world_cmd[5] = v_body_cmd[5]
     mpc.velocity_base = v_world_cmd
     print("base q", q_meas[:7])
     print("yaw(deg)", yaw * 180.0 / np.pi)
@@ -364,8 +372,15 @@ for step in range(300000):
     step_pressed = False
     if ord('n') in events and events[ord('n')] & p.KEY_WAS_TRIGGERED:
         step_pressed = True
-    if paused and not step_pressed:
+    while paused and not step_pressed:
+        events = p.getKeyboardEvents()
+        if ord('p') in events and events[ord('p')] & p.KEY_WAS_TRIGGERED:
+            paused = not paused
+            print("[UI] paused =", paused)
+        if ord('n') in events and events[ord('n')] & p.KEY_WAS_TRIGGERED:
+            step_pressed = True
         time.sleep(0.01)
+    if paused and not step_pressed:
         continue
     # print("Time " + str(step))
     land_LF = mpc.getFootLandCycle("FL_wheel")
@@ -448,6 +463,30 @@ for step in range(300000):
         q_interp = xs_interp[: mpc.getModelHandler().getModel().nq]
         v_interp = xs_interp[mpc.getModelHandler().getModel().nq :]
         force_interp = [force_interp[i, :] for i in range(4)]
+
+        user_v_cmd = v_body_cmd[0]
+        user_w_cmd = v_body_cmd[5]
+        current_ref_yaw += user_w_cmd * dt_simu
+        v_world_x = user_v_cmd * np.cos(current_ref_yaw)
+        v_world_y = user_v_cmd * np.sin(current_ref_yaw)
+        current_ref_pos_x += v_world_x * dt_simu
+        current_ref_pos_y += v_world_y * dt_simu
+
+        v_interp[:6] = 0.0
+        v_interp[0] = v_world_x
+        v_interp[1] = v_world_y
+        v_interp[2] = 0.0
+        v_interp[3] = 0.0
+        v_interp[4] = 0.0
+        v_interp[5] = user_w_cmd
+
+        q_interp[0] = current_ref_pos_x
+        q_interp[1] = current_ref_pos_y
+        q_interp[2] = initial_height
+        q_interp[3] = 0.0
+        q_interp[4] = 0.0
+        q_interp[5] = np.sin(current_ref_yaw * 0.5)
+        q_interp[6] = np.cos(current_ref_yaw * 0.5)
 
         q_meas, v_meas = device.measureState()
         base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
@@ -565,6 +604,33 @@ for step in range(300000):
                     problem_conf["w_soft_friction"] * (res.T @ res)
                 )
 
+            foot_sum_res = None
+            foot_sum_cost = 0.0
+            if problem_conf.get("foot_sum_cstr", False):
+                base_frame_id = mpc.getModelHandler().getBaseFrameId()
+                base_pose = data.oMf[base_frame_id]
+                Rb = base_pose.rotation
+                pb = base_pose.translation
+                sum_base = np.zeros(3)
+                for name in wheel_link_names:
+                    frame_id = mpc.getModelHandler().getFootFrameId(
+                        mpc.getModelHandler().getFootNb(name)
+                    )
+                    pw = data.oMf[frame_id].translation
+                    sum_base += Rb.T @ (pw - pb)
+                mean_base = sum_base / 4.0
+                target_sum = np.array(
+                    [
+                        0.0,
+                        0.0,
+                        initial_height - problem_conf.get("foot_sum_z_offset", 0.0),
+                    ]
+                )
+                foot_sum_res = -mean_base - target_sum
+                foot_sum_cost = float(
+                    problem_conf.get("w_foot_sum", 0.0) * (foot_sum_res.T @ foot_sum_res)
+                )
+
             print("[MPC costs]")
             print("  state_cost", state_cost)
             print("  control_cost", control_cost)
@@ -573,6 +639,9 @@ for step in range(300000):
             print("  soft_contact_vel_res", soft_contact_vel_res)
             print("  soft_friction_cost", soft_friction_cost)
             print("  soft_friction_res", soft_friction_res)
+            if foot_sum_res is not None:
+                print("  foot_sum_cost", foot_sum_cost)
+                print("  foot_sum_res", foot_sum_res)
             print("")
 
         device.execute(tau_cmd)
