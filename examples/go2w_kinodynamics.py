@@ -43,7 +43,7 @@ if "standing" not in robot_wrapper.model.referenceConfigurations:
     )
 # 手动设置初始位姿：用欧拉角计算四元数
 base_pos = np.array([0.0, 0.0, 0.385])
-base_rpy = np.array([0.0, 0.0, -0.5])  # roll, pitch, yaw
+base_rpy = np.array([0.0, 0.0, 0.0])  # roll, pitch, yaw
 R_base = pin.rpy.rpyToMatrix(base_rpy[0], base_rpy[1], base_rpy[2])
 q_base = pin.Quaternion(R_base)
 q_init = robot_wrapper.model.referenceConfigurations["standing"].copy()
@@ -71,11 +71,11 @@ fref[2] = -model_handler.getMass() / nk * gravity[2]
 u0 = np.concatenate((fref, fref, fref, fref, np.zeros(model_handler.getModel().nv - 6)))
 dt_mpc = 0.01
 
-w_basepos = [0, 0, 100, 100, 10, 0]
-w_legpos = [1, 1, 1]
+w_basepos = [0, 0, 100, 0, 0, 100]
+w_legpos = [0, 0, 0]
 
 w_basevel = [0, 0, 10, 10, 10, 10]
-w_legvel = [0.1, 0.1, 0.1]
+w_legvel = [10.1, 10.1, 10.1]
 model = model_handler.getModel()
 wheel_joints = [
     "FL_wheel_joint",
@@ -162,13 +162,26 @@ problem_conf = dict(
     enable_lateral_no_slip=True,
     lateral_no_slip_min_axis_norm=1e-12,
     lateral_no_slip_min_cross_norm=1e-8,
+    use_vector_glide_cost=True,
+    vector_glide_weight=100.0,
+    vector_glide_min_omega=1e-6,
+    min_wheel_distance_cstr=True,
+    min_wheel_distance=1.2 * 2.0 * wheel_radius,
+    min_wheel_distance_cost=True,
+    w_min_wheel_distance=0.05,
+    min_wheel_distance_cost_eps=1e-1,
+    force_z_variance_cost=True,
+    w_force_z_variance=10.0,
+    joint_limit_soft_cost=True,
+    w_joint_limit_soft=2.0,
+    joint_limit_soft_fraction=0.5,
     soft_constraints=True,
     w_soft_contact_vel=20.0,
     w_soft_friction=0.0,
     w_soft_land=0.0,
-    track_width_cstr=True,
+    track_width_cstr=False,
     w_track_width=w_LFRF,
-    foot_sum_cstr=True,
+    foot_sum_cstr=False,
     w_foot_sum=w_LFRF,
     foot_sum_z_offset=wheel_radius,
 )
@@ -243,7 +256,8 @@ interpolator = Interpolator(model_handler.getModel())
 kino_ID_settings = KinodynamicsIDSettings()
 kino_ID_settings.kp_base = 15.0
 kino_ID_settings.kp_posture = 30.0
-kino_ID_settings.kp_contact = 0.0
+kino_ID_settings.kp_contact = 0
+.0
 kino_ID_settings.w_base = 100.0
 kino_ID_settings.w_posture = 10.0
 kino_ID_settings.w_contact_force = 1.0
@@ -258,8 +272,8 @@ kino_ID_settings.ff_wheel_scale = 1.0
 kino_ID_settings.enable_nonholonomic = False
 kino_ID_settings.enable_lateral_no_slip = False
 kino_ID_settings.lateral_no_slip_use_bounds = True
-kino_ID_settings.lateral_no_slip_lower = -10
-kino_ID_settings.lateral_no_slip_upper = 10
+kino_ID_settings.lateral_no_slip_lower = -3
+kino_ID_settings.lateral_no_slip_upper = 3
 kino_ID_settings.use_vector_glide_cost = False
 kino_ID_settings.vector_glide_weight = 1.0
 kino_ID = KinodynamicsID(model_handler, dt_simu, kino_ID_settings)
@@ -569,10 +583,35 @@ for step in range(300000):
             state_cost = float(dx.T @ w_x @ dx)
             control_cost = float(du.T @ w_u @ du)
 
+            ndx = dx.shape[0]
+            nv = model.nv
+            idx_base_pos = np.arange(0, 3)
+            idx_base_ori = np.arange(3, 6)
+            idx_joint_pos = np.arange(6, nv)
+            idx_base_linvel = np.arange(nv + 0, nv + 3)
+            idx_base_angvel = np.arange(nv + 3, nv + 6)
+            idx_joint_vel = np.arange(nv + 6, 2 * nv)
+
+            def quad_cost(vec, W, idxs):
+                if idxs.size == 0:
+                    return 0.0
+                sub = vec[idxs]
+                Wsub = W[np.ix_(idxs, idxs)]
+                return float(sub.T @ Wsub @ sub)
+
+            state_cost_base_pos = quad_cost(dx, w_x, idx_base_pos)
+            state_cost_base_ori = quad_cost(dx, w_x, idx_base_ori)
+            state_cost_joint_pos = quad_cost(dx, w_x, idx_joint_pos)
+            state_cost_base_linvel = quad_cost(dx, w_x, idx_base_linvel)
+            state_cost_base_angvel = quad_cost(dx, w_x, idx_base_angvel)
+            state_cost_joint_vel = quad_cost(dx, w_x, idx_joint_vel)
+
             model = mpc.getModelHandler().getModel()
             data = pin.Data(model)
             pin.forwardKinematics(model, data, x0[:nq], x0[nq:])
             pin.updateFramePlacements(model, data)
+            pin.computeCentroidalMomentum(model, data, x0[:nq], x0[nq:])
+            com = pin.centerOfMass(model, data, x0[:nq], x0[nq:])
 
             foot_cost = 0.0
             for name in wheel_link_names:
@@ -583,6 +622,45 @@ for step in range(300000):
                 foot_ref = mpc.getReferencePose(0, name).translation
                 err = foot_pos - foot_ref
                 foot_cost += float(err.T @ np.diag(problem_conf["w_frame"]) @ err)
+
+            centroidal_cost = 0.0
+            centroidal_cost_lin = 0.0
+            centroidal_cost_ang = 0.0
+            if problem_conf.get("w_cent", None) is not None:
+                h = data.hg.vector
+                centroidal_cost = float(h.T @ problem_conf["w_cent"] @ h)
+                centroidal_cost_lin = float(
+                    h[:3].T
+                    @ np.diag(np.diag(problem_conf["w_cent"])[:3])
+                    @ h[:3]
+                )
+                centroidal_cost_ang = float(
+                    h[3:].T
+                    @ np.diag(np.diag(problem_conf["w_cent"])[3:])
+                    @ h[3:]
+                )
+
+            centroidal_derivative_cost = 0.0
+            centroidal_derivative_res = None
+            if problem_conf.get("w_centder", None) is not None:
+                sum_f = np.zeros(3)
+                sum_tau = np.zeros(3)
+                for i, name in enumerate(wheel_link_names):
+                    frame_id = mpc.getModelHandler().getFootFrameId(
+                        mpc.getModelHandler().getFootNb(name)
+                    )
+                    r_contact = data.oMf[frame_id].translation
+                    fx, fy, fz = u0[i * force_size : i * force_size + 3]
+                    f_i = np.array([fx, fy, fz])
+                    sum_f += f_i
+                    sum_tau += np.cross(r_contact - com, f_i)
+                sum_f += model_handler.getMass() * gravity
+                centroidal_derivative_res = np.concatenate([sum_f, sum_tau])
+                centroidal_derivative_cost = float(
+                    centroidal_derivative_res.T
+                    @ problem_conf["w_centder"]
+                    @ centroidal_derivative_res
+                )
 
             soft_contact_vel_cost = 0.0
             soft_contact_vel_res = []
@@ -664,10 +742,196 @@ for step in range(300000):
                     problem_conf.get("w_foot_sum", 0.0) * (foot_sum_res.T @ foot_sum_res)
                 )
 
+            track_width_res = None
+            track_width_cost = 0.0
+            if problem_conf.get("track_width_cstr", False) and len(wheel_link_names) >= 4:
+                base_frame_id = mpc.getModelHandler().getBaseFrameId()
+                base_pose = data.oMf[base_frame_id]
+                Rb = base_pose.rotation
+                pb = base_pose.translation
+                def y_in_base(fid):
+                    pw = data.oMf[fid].translation
+                    pb_rel = Rb.T @ (pw - pb)
+                    return pb_rel[1]
+                fl_id = mpc.getModelHandler().getFootFrameId(
+                    mpc.getModelHandler().getFootNb(wheel_link_names[0])
+                )
+                fr_id = mpc.getModelHandler().getFootFrameId(
+                    mpc.getModelHandler().getFootNb(wheel_link_names[1])
+                )
+                rl_id = mpc.getModelHandler().getFootFrameId(
+                    mpc.getModelHandler().getFootNb(wheel_link_names[2])
+                )
+                rr_id = mpc.getModelHandler().getFootFrameId(
+                    mpc.getModelHandler().getFootNb(wheel_link_names[3])
+                )
+                y_fl = y_in_base(fl_id)
+                y_fr = y_in_base(fr_id)
+                y_rl = y_in_base(rl_id)
+                y_rr = y_in_base(rr_id)
+
+                ref_state = mpc.getModelHandler().getReferenceState()
+                data_ref = pin.Data(model)
+                pin.forwardKinematics(model, data_ref, ref_state[:nq], ref_state[nq:])
+                pin.updateFramePlacements(model, data_ref)
+                base_ref = data_ref.oMf[base_frame_id]
+                Rb_ref = base_ref.rotation
+                pb_ref = base_ref.translation
+                def y_in_base_ref(fid):
+                    pw = data_ref.oMf[fid].translation
+                    pb_rel = Rb_ref.T @ (pw - pb_ref)
+                    return pb_rel[1]
+                y_fl_ref = y_in_base_ref(fl_id)
+                y_fr_ref = y_in_base_ref(fr_id)
+                y_rl_ref = y_in_base_ref(rl_id)
+                y_rr_ref = y_in_base_ref(rr_id)
+                target_front = y_fl_ref - y_fr_ref
+                target_rear = y_rl_ref - y_rr_ref
+
+                track_width_res = np.array(
+                    [(y_fl - y_fr) - target_front, (y_rl - y_rr) - target_rear]
+                )
+                track_width_cost = float(
+                    problem_conf.get("w_track_width", 0.0)
+                    * (track_width_res.T @ track_width_res)
+                )
+
+            min_wheel_distance_cost = 0.0
+            min_wheel_distance_res = None
+            if problem_conf.get("min_wheel_distance_cost", False) and len(wheel_link_names) >= 2:
+                min_wheel_distance_res = []
+                min_dist = float(problem_conf.get("min_wheel_distance", 0.0))
+                eps = float(problem_conf.get("min_wheel_distance_cost_eps", 1e-3))
+                ref_state = mpc.getModelHandler().getReferenceState()
+                data_ref = pin.Data(model)
+                pin.forwardKinematics(model, data_ref, ref_state[:nq], ref_state[nq:])
+                pin.updateFramePlacements(model, data_ref)
+                pairs = [("FL_wheel", "RL_wheel"), ("FR_wheel", "RR_wheel")]
+                ref_dist = []
+                for a, b in pairs:
+                    fa = mpc.getModelHandler().getFootFrameId(mpc.getModelHandler().getFootNb(a))
+                    fb = mpc.getModelHandler().getFootFrameId(mpc.getModelHandler().getFootNb(b))
+                    pa = data_ref.oMf[fa].translation.copy()
+                    pb = data_ref.oMf[fb].translation.copy()
+                    pa[2] = 0.0
+                    pb[2] = 0.0
+                    ref_dist.append(np.linalg.norm(pa - pb))
+                for idx, (a, b) in enumerate(pairs):
+                    fa = mpc.getModelHandler().getFootFrameId(mpc.getModelHandler().getFootNb(a))
+                    fb = mpc.getModelHandler().getFootFrameId(mpc.getModelHandler().getFootNb(b))
+                    pa = data.oMf[fa].translation.copy()
+                    pb = data.oMf[fb].translation.copy()
+                    pa[2] = 0.0
+                    pb[2] = 0.0
+                    d = np.linalg.norm(pa - pb)
+                    denom = max(d - min_dist + eps, eps)
+                    denom0 = max(ref_dist[idx] - min_dist + eps, eps)
+                    res = (1.0 / denom) - (1.0 / denom0)
+                    min_wheel_distance_res.append(res)
+                    min_wheel_distance_cost += float(
+                        problem_conf.get("w_min_wheel_distance", 0.0) * (res * res)
+                    )
+
+            vector_glide_cost = 0.0
+            vector_glide_res = []
+            if problem_conf.get("use_vector_glide_cost", False):
+                v_des = float(mpc.velocity_base[0])
+                omega_des = float(mpc.velocity_base[5])
+                if abs(omega_des) >= problem_conf.get("vector_glide_min_omega", 1e-6):
+                    base_frame_id = mpc.getModelHandler().getBaseFrameId()
+                    base_pose = data.oMf[base_frame_id]
+                    r_base = base_pose.translation
+                    R_base = base_pose.rotation
+                    icr_local = np.array([0.0, v_des / omega_des, 0.0])
+                    r_O_star = r_base + R_base @ icr_local
+                    for name in wheel_link_names:
+                        frame_id = mpc.getModelHandler().getFootFrameId(
+                            mpc.getModelHandler().getFootNb(name)
+                        )
+                        foot_pose = data.oMf[frame_id]
+                        a_y = foot_pose.rotation[:, 1]
+                        if np.linalg.norm(a_y) < problem_conf["lateral_no_slip_min_axis_norm"]:
+                            a_y = np.array([0.0, 1.0, 0.0])
+                        else:
+                            a_y = a_y / np.linalg.norm(a_y)
+                        g_z = np.array([0.0, 0.0, 1.0])
+                        c_x = np.cross(a_y, g_z)
+                        if np.linalg.norm(c_x) < problem_conf["lateral_no_slip_min_cross_norm"]:
+                            a_x = foot_pose.rotation[:, 0]
+                            c_x = a_x - g_z * np.dot(a_x, g_z)
+                        if np.linalg.norm(c_x) < problem_conf["lateral_no_slip_min_cross_norm"]:
+                            c_x = np.array([1.0, 0.0, 0.0])
+                        c_x = c_x / np.linalg.norm(c_x)
+                        r_contact = foot_pose.translation
+                        rho = r_O_star - r_contact
+                        rho_norm = np.linalg.norm(rho)
+                        if rho_norm > 1e-9:
+                            e_i = float(np.dot(rho, c_x))
+                            res = e_i / rho_norm
+                            vector_glide_res.append(res)
+                            vector_glide_cost += float(
+                                problem_conf.get("vector_glide_weight", 0.0) * (res * res)
+                            )
+
+            force_z_variance_cost = 0.0
+            force_z_variance_res = None
+            if problem_conf.get("force_z_variance_cost", False) and force_size >= 3:
+                fz = []
+                for i in range(len(wheel_link_names)):
+                    if contact_states[i]:
+                        fz.append(u0[i * force_size + 2])
+                if fz:
+                    mean_fz = float(np.mean(fz))
+                    var_fz = float(np.mean((np.array(fz) - mean_fz) ** 2))
+                    force_z_variance_res = var_fz
+                    force_z_variance_cost = float(
+                        problem_conf.get("w_force_z_variance", 0.0) * var_fz
+                    )
+
+            joint_limit_soft_cost = 0.0
+            joint_limit_soft_res = None
+            if problem_conf.get("joint_limit_soft_cost", False):
+                qmin = problem_conf["qmin"]
+                qmax = problem_conf["qmax"]
+                frac = float(problem_conf.get("joint_limit_soft_fraction", 0.5))
+                res = np.zeros_like(qmin)
+                for i in range(qmin.shape[0]):
+                    q_i = q0[7 + i]
+                    qmin_i = qmin[i]
+                    qmax_i = qmax[i]
+                    rng = qmax_i - qmin_i
+                    if rng <= 0.0:
+                        continue
+                    mid = 0.5 * (qmin_i + qmax_i)
+                    half = 0.5 * rng
+                    dead = frac * half
+                    dist = abs(q_i - mid)
+                    if dist <= dead:
+                        continue
+                    s = (dist - dead) / max(half - dead, 1e-9)
+                    s = min(1.0, max(0.0, s))
+                    res[i] = s * s
+                joint_limit_soft_res = res
+                joint_limit_soft_cost = float(
+                    problem_conf.get("w_joint_limit_soft", 0.0) * (res.T @ res)
+                )
+
             print("[MPC costs]")
             print("  state_cost", state_cost)
+            print("  state_cost_base_pos", state_cost_base_pos)
+            print("  state_cost_base_ori", state_cost_base_ori)
+            print("  state_cost_joint_pos", state_cost_joint_pos)
+            print("  state_cost_base_linvel", state_cost_base_linvel)
+            print("  state_cost_base_angvel", state_cost_base_angvel)
+            print("  state_cost_joint_vel", state_cost_joint_vel)
             print("  control_cost", control_cost)
             print("  foot_cost", foot_cost)
+            print("  centroidal_cost", centroidal_cost)
+            print("  centroidal_cost_lin", centroidal_cost_lin)
+            print("  centroidal_cost_ang", centroidal_cost_ang)
+            print("  centroidal_derivative_cost", centroidal_derivative_cost)
+            if centroidal_derivative_res is not None:
+                print("  centroidal_derivative_res", centroidal_derivative_res)
             print("  soft_contact_vel_cost", soft_contact_vel_cost)
             print("  soft_contact_vel_res", soft_contact_vel_res)
             print("  soft_friction_cost", soft_friction_cost)
@@ -675,6 +939,21 @@ for step in range(300000):
             if foot_sum_res is not None:
                 print("  foot_sum_cost", foot_sum_cost)
                 print("  foot_sum_res", foot_sum_res)
+            if track_width_res is not None:
+                print("  track_width_cost", track_width_cost)
+                print("  track_width_res", track_width_res)
+            if min_wheel_distance_res is not None:
+                print("  min_wheel_distance_cost", min_wheel_distance_cost)
+                print("  min_wheel_distance_res", min_wheel_distance_res)
+            if vector_glide_res:
+                print("  vector_glide_cost", vector_glide_cost)
+                print("  vector_glide_res", vector_glide_res)
+            if force_z_variance_res is not None:
+                print("  force_z_variance_cost", force_z_variance_cost)
+                print("  force_z_variance_res", force_z_variance_res)
+            if joint_limit_soft_res is not None:
+                print("  joint_limit_soft_cost", joint_limit_soft_cost)
+                print("  joint_limit_soft_res", joint_limit_soft_res)
             print("")
 
         device.execute(tau_cmd)

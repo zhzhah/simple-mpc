@@ -15,6 +15,9 @@
 #include "simple-mpc/track-width.hpp"
 #include "simple-mpc/foot-sum.hpp"
 #include "simple-mpc/lateral-no-slip.hpp"
+#include "simple-mpc/vector-glide.hpp"
+#include "simple-mpc/wheel-distance.hpp"
+#include "simple-mpc/mpc-extra-costs.hpp"
 
 namespace simple_mpc
 {
@@ -34,6 +37,7 @@ namespace simple_mpc
   KinodynamicsOCP::KinodynamicsOCP(const KinodynamicsSettings & settings, const RobotModelHandler & model_handler)
   : Base(model_handler)
   , settings_(settings)
+  , vector_glide_velocity_base_(Eigen::VectorXd::Zero(6))
   {
 
     nu_ = nv_ - 6 + settings_.force_size * (int)model_handler_.getFeetNb();
@@ -78,6 +82,44 @@ namespace simple_mpc
         foot_sum_target_ << 0.0, 0.0, x0_[2] - settings_.foot_sum_z_offset;
       else
         foot_sum_target_.setZero();
+    }
+
+    if (settings_.min_wheel_distance_cost && model_handler_.getFeetNb() >= 2)
+    {
+      const pinocchio::Model & model = model_handler_.getModel();
+      pinocchio::Data data(model);
+      const Eigen::VectorXd q_ref = x0_.head(model.nq);
+      const Eigen::VectorXd v_ref = x0_.tail(model.nv);
+      pinocchio::forwardKinematics(model, data, q_ref, v_ref);
+      pinocchio::updateFramePlacements(model, data);
+      std::vector<std::pair<pinocchio::FrameIndex, pinocchio::FrameIndex>> pairs;
+      std::vector<pinocchio::FrameIndex> left_frames;
+      std::vector<pinocchio::FrameIndex> right_frames;
+      for (size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); ++foot_nb)
+      {
+        const std::string & name = model_handler_.getFootFrameName(foot_nb);
+        const pinocchio::FrameIndex fid = model_handler_.getFootFrameId(foot_nb);
+        if (name.find("FL") != std::string::npos || name.find("RL") != std::string::npos)
+          left_frames.push_back(fid);
+        else if (name.find("FR") != std::string::npos || name.find("RR") != std::string::npos)
+          right_frames.push_back(fid);
+      }
+      for (size_t i = 0; i + 1 < left_frames.size(); ++i)
+        for (size_t j = i + 1; j < left_frames.size(); ++j)
+          pairs.emplace_back(left_frames[i], left_frames[j]);
+      for (size_t i = 0; i + 1 < right_frames.size(); ++i)
+        for (size_t j = i + 1; j < right_frames.size(); ++j)
+          pairs.emplace_back(right_frames[i], right_frames[j]);
+
+      wheel_distance_ref_.clear();
+      for (const auto & pair : pairs)
+      {
+        Eigen::Vector3d pi = data.oMf[pair.first].translation();
+        Eigen::Vector3d pj = data.oMf[pair.second].translation();
+        pi.z() = 0.0;
+        pj.z() = 0.0;
+        wheel_distance_ref_.push_back((pi - pj).norm());
+      }
     }
   }
 
@@ -131,6 +173,63 @@ namespace simple_mpc
       rcost.addCost("track_width_cost", QuadraticResidualCost(space, track_width_residual, w));
     }
 
+    auto build_same_side_pairs = [&]() {
+      std::vector<std::pair<pinocchio::FrameIndex, pinocchio::FrameIndex>> pairs;
+      std::vector<pinocchio::FrameIndex> left_frames;
+      std::vector<pinocchio::FrameIndex> right_frames;
+      for (size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); foot_nb++)
+      {
+        const std::string & name = model_handler_.getFootFrameName(foot_nb);
+        const pinocchio::FrameIndex fid = model_handler_.getFootFrameId(foot_nb);
+        if (name.find("FL") != std::string::npos || name.find("RL") != std::string::npos)
+          left_frames.push_back(fid);
+        else if (name.find("FR") != std::string::npos || name.find("RR") != std::string::npos)
+          right_frames.push_back(fid);
+      }
+      for (size_t i = 0; i + 1 < left_frames.size(); ++i)
+        for (size_t j = i + 1; j < left_frames.size(); ++j)
+          pairs.emplace_back(left_frames[i], left_frames[j]);
+      for (size_t i = 0; i + 1 < right_frames.size(); ++i)
+        for (size_t j = i + 1; j < right_frames.size(); ++j)
+          pairs.emplace_back(right_frames[i], right_frames[j]);
+      return pairs;
+    };
+
+    if (settings_.min_wheel_distance_cost && settings_.w_min_wheel_distance > 0.0 && model_handler_.getFeetNb() >= 2)
+    {
+      std::vector<std::pair<pinocchio::FrameIndex, pinocchio::FrameIndex>> pairs = build_same_side_pairs();
+      WheelDistanceSoftResidual wheel_dist_residual(
+        space.ndx(), nu_, model_handler_.getModel(), pairs, &wheel_distance_ref_,
+        settings_.min_wheel_distance, settings_.min_wheel_distance_cost_eps);
+      const Eigen::MatrixXd w =
+        Eigen::MatrixXd::Identity(wheel_dist_residual.nr, wheel_dist_residual.nr) * settings_.w_min_wheel_distance;
+      rcost.addCost("min_wheel_distance_cost", QuadraticResidualCost(space, wheel_dist_residual, w));
+    }
+
+    if (settings_.force_z_variance_cost && settings_.w_force_z_variance > 0.0 && settings_.force_size >= 3)
+    {
+      std::vector<int> active_contacts;
+      active_contacts.reserve(model_handler_.getFeetNb());
+      for (size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); foot_nb++)
+      {
+        const std::string & name = model_handler_.getFootFrameName(foot_nb);
+        if (contact_phase.at(name))
+          active_contacts.push_back(static_cast<int>(foot_nb));
+      }
+      ForceZVarianceResidual force_var_residual(space.ndx(), nu_, settings_.force_size, active_contacts);
+      const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(1, 1) * settings_.w_force_z_variance;
+      rcost.addCost("force_z_variance_cost", QuadraticResidualCost(space, force_var_residual, w));
+    }
+
+    if (settings_.joint_limit_soft_cost && settings_.w_joint_limit_soft > 0.0 && settings_.joint_limit_soft_fraction > 0.0)
+    {
+      JointLimitSoftResidual joint_limit_residual(
+        space.ndx(), nu_, settings_.qmin, settings_.qmax, settings_.joint_limit_soft_fraction);
+      const Eigen::MatrixXd w =
+        Eigen::MatrixXd::Identity(joint_limit_residual.nr, joint_limit_residual.nr) * settings_.w_joint_limit_soft;
+      rcost.addCost("joint_limit_soft_cost", QuadraticResidualCost(space, joint_limit_residual, w));
+    }
+
     Eigen::MatrixXd w_frame_mat;
     if (settings_.force_size == 6)
     {
@@ -169,11 +268,36 @@ namespace simple_mpc
       }
     }
 
+    if (settings_.use_vector_glide_cost && settings_.vector_glide_weight > 0.0)
+    {
+      for (size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); foot_nb++)
+      {
+        const std::string & name = model_handler_.getFootFrameName(foot_nb);
+        if (!contact_phase.at(name))
+          continue;
+        VectorGlideResidual glide_residual(
+          space.ndx(), nu_, model_handler_.getModel(), model_handler_.getBaseFrameId(),
+          model_handler_.getFootFrameId(foot_nb), &vector_glide_velocity_base_,
+          settings_.lateral_no_slip_min_axis_norm, settings_.lateral_no_slip_min_cross_norm,
+          settings_.vector_glide_min_omega);
+        const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(1, 1) * settings_.vector_glide_weight;
+        rcost.addCost(name + "_vector_glide_cost", QuadraticResidualCost(space, glide_residual, w));
+      }
+    }
+
     KinodynamicsFwdDynamics ode = KinodynamicsFwdDynamics(
       space, model_handler_.getModel(), settings_.gravity, contact_states, model_handler_.getFeetFrameIds(),
       settings_.force_size);
     IntegratorSemiImplEuler dyn_model = IntegratorSemiImplEuler(ode, settings_.timestep);
     StageModel stm = StageModel(rcost, dyn_model);
+
+    if (settings_.min_wheel_distance_cstr && model_handler_.getFeetNb() >= 2)
+    {
+      std::vector<std::pair<pinocchio::FrameIndex, pinocchio::FrameIndex>> pairs = build_same_side_pairs();
+      WheelDistanceResidual wheel_dist_residual(
+        space.ndx(), nu_, model_handler_.getModel(), pairs, settings_.min_wheel_distance);
+      stm.addConstraint(wheel_dist_residual, NegativeOrthant());
+    }
 
     if (settings_.kinematics_limits)
     {
@@ -454,6 +578,7 @@ namespace simple_mpc
     x0_ = getReferenceState(t);
     x0_.segment(nq_, 6) = velocity_base;
     qc->setTarget(x0_);
+    vector_glide_velocity_base_ = velocity_base;
   }
 
   const Eigen::VectorXd KinodynamicsOCP::getPoseBase(const std::size_t t)

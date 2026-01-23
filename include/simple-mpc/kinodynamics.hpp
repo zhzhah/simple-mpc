@@ -52,6 +52,19 @@ namespace simple_mpc
     bool enable_lateral_no_slip;
     double lateral_no_slip_min_axis_norm;
     double lateral_no_slip_min_cross_norm;
+    bool use_vector_glide_cost;
+    double vector_glide_weight;
+    double vector_glide_min_omega;
+    bool min_wheel_distance_cstr;
+    double min_wheel_distance;
+    bool min_wheel_distance_cost;
+    double w_min_wheel_distance;
+    double min_wheel_distance_cost_eps;
+    bool force_z_variance_cost;
+    double w_force_z_variance;
+    bool joint_limit_soft_cost;
+    double w_joint_limit_soft;
+    double joint_limit_soft_fraction;
     bool soft_constraints;
     double w_soft_contact_vel;
     double w_soft_friction;
@@ -119,6 +132,8 @@ namespace simple_mpc
     double track_width_front_ = 0.0;
     double track_width_rear_ = 0.0;
     Eigen::Vector3d foot_sum_target_ = Eigen::Vector3d::Zero();
+    Eigen::VectorXd vector_glide_velocity_base_;
+    std::vector<double> wheel_distance_ref_;
   };
 
 } // namespace simple_mpc
