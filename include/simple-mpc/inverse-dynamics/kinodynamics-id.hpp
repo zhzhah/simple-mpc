@@ -45,6 +45,17 @@ namespace simple_mpc
     /// (J_modified * ddq = -dotJ * qdot)
     void addNonHolonomicRollingConstraint(const std::string &contact_frame_name, double radius);
 
+    struct LateralNoSlipConstraint {
+      std::string contact_frame_name; // contact frame (foot) name
+      LateralNoSlipConstraint() = default;
+      explicit LateralNoSlipConstraint(const std::string &n)
+        : contact_frame_name(n) {}
+    };
+
+    /// Register a lateral no-slip constraint on a contact frame.
+    /// The constraint enforces: v_contact dot c_y = 0.
+    void addLateralNoSlipConstraint(const std::string &contact_frame_name);
+
 // ...
     struct Settings
     {
@@ -67,9 +78,20 @@ namespace simple_mpc
   double wheel_radius = 0.0762;    // default wheel radius (meters)
   double ff_wheel_scale = 1.1;     // feed-forward scale for wheel torque
 
-  // Enable/disable adding non-holonomic rolling equality constraints
-  // when solving the HQP. Set to false to temporarily disable them for testing.
-  bool enable_nonholonomic = true;
+  // Legacy non-holonomic rolling equality constraints (disabled by default).
+  bool enable_nonholonomic = false;
+
+  // Enable/disable lateral no-slip constraints and their numerical safeguards.
+  bool enable_lateral_no_slip = true;
+  double lateral_no_slip_min_axis_norm = 1e-12;
+  double lateral_no_slip_min_cross_norm = 1e-8;
+  // If true, use bounded inequality: lower <= v_contact·c_y <= upper.
+  bool lateral_no_slip_use_bounds = true;
+  double lateral_no_slip_lower = -0.9;
+  double lateral_no_slip_upper = 0.9;
+  // VectorGlide cost (debug metric for Ackermann-like alignment)
+  bool use_vector_glide_cost = false;
+  double vector_glide_weight = 1.0;
 
       // Tasks weights
       double w_base = -1.;           // Disabled by default
@@ -128,6 +150,7 @@ namespace simple_mpc
     Eigen::VectorXd a_target_;
     std::vector<ActuatedRollingConstraint> rolling_constraints_;
     std::vector<NonHolonomicRollingConstraint> nonholonomic_constraints_;
+    std::vector<LateralNoSlipConstraint> lateral_no_slip_constraints_;
   };
 
 } // namespace simple_mpc

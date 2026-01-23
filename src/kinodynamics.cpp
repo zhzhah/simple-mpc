@@ -14,6 +14,7 @@
 #include "simple-mpc/soft-constraints.hpp"
 #include "simple-mpc/track-width.hpp"
 #include "simple-mpc/foot-sum.hpp"
+#include "simple-mpc/lateral-no-slip.hpp"
 
 namespace simple_mpc
 {
@@ -244,29 +245,53 @@ namespace simple_mpc
               stm.addConstraint(friction_residual, NegativeOrthant());
             }
           }
-          std::vector<int> vel_id;
-          if (settings_.nonholonomic_rolling)
+          if (settings_.enable_lateral_no_slip)
           {
-            // Allow motion along local X (rolling direction), constrain lateral/normal.
-            vel_id = {1, 2};
-          }
-          else
-          {
-            vel_id = {0, 1, 2};
-          }
+            LateralNoSlipResidual lateral_residual(
+              space.ndx(), nu_, model_handler_.getModel(), model_handler_.getFootFrameId(foot_nb),
+              settings_.lateral_no_slip_min_axis_norm, settings_.lateral_no_slip_min_cross_norm);
+            // Always enforce lateral no-slip as a hard equality constraint.
+            stm.addConstraint(lateral_residual, EqualityConstraint());
 
-          FunctionSliceXpr vel_slice = FunctionSliceXpr(frame_vel, vel_id);
-          if (settings_.soft_constraints && settings_.w_soft_contact_vel > 0.0)
-          {
-            const Eigen::MatrixXd w =
-              Eigen::MatrixXd::Identity(static_cast<int>(vel_id.size()), static_cast<int>(vel_id.size()))
-              * settings_.w_soft_contact_vel;
-            rcost.addCost(
-              name + "_contact_vel_soft", QuadraticResidualCost(space, vel_slice, w));
+            const std::vector<int> vel_id = {2};
+            FunctionSliceXpr vel_slice = FunctionSliceXpr(frame_vel, vel_id);
+            if (settings_.soft_constraints && settings_.w_soft_contact_vel > 0.0)
+            {
+              const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(1, 1) * settings_.w_soft_contact_vel;
+              rcost.addCost(
+                name + "_contact_vel_soft", QuadraticResidualCost(space, vel_slice, w));
+            }
+            else
+            {
+              stm.addConstraint(vel_slice, EqualityConstraint());
+            }
           }
           else
           {
-            stm.addConstraint(vel_slice, EqualityConstraint());
+            std::vector<int> vel_id;
+            if (settings_.nonholonomic_rolling)
+            {
+              // Allow motion along local X (rolling direction), constrain lateral/normal.
+              vel_id = {1, 2};
+            }
+            else
+            {
+              vel_id = {0, 1, 2};
+            }
+
+            FunctionSliceXpr vel_slice = FunctionSliceXpr(frame_vel, vel_id);
+            if (settings_.soft_constraints && settings_.w_soft_contact_vel > 0.0)
+            {
+              const Eigen::MatrixXd w =
+                Eigen::MatrixXd::Identity(static_cast<int>(vel_id.size()), static_cast<int>(vel_id.size()))
+                * settings_.w_soft_contact_vel;
+              rcost.addCost(
+                name + "_contact_vel_soft", QuadraticResidualCost(space, vel_slice, w));
+            }
+            else
+            {
+              stm.addConstraint(vel_slice, EqualityConstraint());
+            }
           }
           if (settings_.land_cstr and land_constraint.at(name))
           {

@@ -158,7 +158,10 @@ problem_conf = dict(
     kinematics_limits=True,
     force_cone=False,
     land_cstr=False,
-    nonholonomic_rolling=True,
+    nonholonomic_rolling=False,
+    enable_lateral_no_slip=True,
+    lateral_no_slip_min_axis_norm=1e-12,
+    lateral_no_slip_min_cross_norm=1e-8,
     soft_constraints=True,
     w_soft_contact_vel=20.0,
     w_soft_friction=0.0,
@@ -251,14 +254,19 @@ kino_ID_settings.w_posture_wheel = 0.001
 # Wheel physical settings
 kino_ID_settings.wheel_radius = wheel_radius
 kino_ID_settings.ff_wheel_scale = 1.0
-# Temporarily disable non-holonomic rolling constraints for testing
-# (set to False to check whether they cause an abrupt exit)
-kino_ID_settings.enable_nonholonomic = True
+# Disable legacy non-holonomic rolling constraints (kept for compatibility)
+kino_ID_settings.enable_nonholonomic = False
+kino_ID_settings.enable_lateral_no_slip = False
+kino_ID_settings.lateral_no_slip_use_bounds = True
+kino_ID_settings.lateral_no_slip_lower = -10
+kino_ID_settings.lateral_no_slip_upper = 10
+kino_ID_settings.use_vector_glide_cost = False
+kino_ID_settings.vector_glide_weight = 1.0
 kino_ID = KinodynamicsID(model_handler, dt_simu, kino_ID_settings)
-kino_ID.addNonHolonomicRollingConstraint("FL_wheel", wheel_radius)
-kino_ID.addNonHolonomicRollingConstraint("FR_wheel", wheel_radius)
-kino_ID.addNonHolonomicRollingConstraint("RL_wheel", wheel_radius)
-kino_ID.addNonHolonomicRollingConstraint("RR_wheel", wheel_radius)
+kino_ID.addLateralNoSlipConstraint("FL_wheel")
+kino_ID.addLateralNoSlipConstraint("FR_wheel")
+kino_ID.addLateralNoSlipConstraint("RL_wheel")
+kino_ID.addLateralNoSlipConstraint("RR_wheel")
 
 """ Initialize simulation"""
 device = BulletRobot(
@@ -583,7 +591,32 @@ for step in range(300000):
                     mpc.getModelHandler().getFootNb(name)
                 )
                 v_local = pin.getFrameVelocity(model, data, frame_id, pin.LOCAL).linear
-                if problem_conf["nonholonomic_rolling"]:
+                if problem_conf.get("enable_lateral_no_slip", False):
+                    foot_pose = data.oMf[frame_id]
+                    a_y = foot_pose.rotation[:, 1]
+                    if np.linalg.norm(a_y) < problem_conf["lateral_no_slip_min_axis_norm"]:
+                        a_y = np.array([0.0, 1.0, 0.0])
+                    else:
+                        a_y = a_y / np.linalg.norm(a_y)
+                    g_z = np.array([0.0, 0.0, 1.0])
+                    c_x = np.cross(a_y, g_z)
+                    if np.linalg.norm(c_x) < problem_conf["lateral_no_slip_min_cross_norm"]:
+                        a_x = foot_pose.rotation[:, 0]
+                        c_x = a_x - g_z * np.dot(a_x, g_z)
+                    if np.linalg.norm(c_x) < problem_conf["lateral_no_slip_min_cross_norm"]:
+                        c_x = np.array([1.0, 0.0, 0.0])
+                    c_x = c_x / np.linalg.norm(c_x)
+                    c_y = np.cross(g_z, c_x)
+                    if np.linalg.norm(c_y) < problem_conf["lateral_no_slip_min_cross_norm"]:
+                        c_y = np.array([0.0, 1.0, 0.0])
+                    else:
+                        c_y = c_y / np.linalg.norm(c_y)
+                    v_world = pin.getFrameVelocity(
+                        model, data, frame_id, pin.LOCAL_WORLD_ALIGNED
+                    ).linear
+                    res_lat = np.array([float(np.dot(v_world, c_y))])
+                    res = np.concatenate([res_lat, np.array([v_local[2]])])
+                elif problem_conf["nonholonomic_rolling"]:
                     res = v_local[1:3]
                 else:
                     res = v_local[:3]

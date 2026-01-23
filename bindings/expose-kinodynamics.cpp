@@ -30,6 +30,9 @@ namespace simple_mpc::python
     conf.force_cone = bp::extract<bool>(settings["force_cone"]);
     conf.land_cstr = bp::extract<bool>(settings["land_cstr"]);
     conf.nonholonomic_rolling = bp::extract<bool>(settings["nonholonomic_rolling"]);
+    conf.enable_lateral_no_slip = bp::extract<bool>(settings["enable_lateral_no_slip"]);
+    conf.lateral_no_slip_min_axis_norm = bp::extract<double>(settings["lateral_no_slip_min_axis_norm"]);
+    conf.lateral_no_slip_min_cross_norm = bp::extract<double>(settings["lateral_no_slip_min_cross_norm"]);
     conf.soft_constraints = bp::extract<bool>(settings["soft_constraints"]);
     conf.w_soft_contact_vel = bp::extract<double>(settings["w_soft_contact_vel"]);
     conf.w_soft_friction = bp::extract<double>(settings["w_soft_friction"]);
@@ -64,6 +67,9 @@ namespace simple_mpc::python
     settings["force_cone"] = conf.force_cone;
     settings["land_cstr"] = conf.land_cstr;
     settings["nonholonomic_rolling"] = conf.nonholonomic_rolling;
+    settings["enable_lateral_no_slip"] = conf.enable_lateral_no_slip;
+    settings["lateral_no_slip_min_axis_norm"] = conf.lateral_no_slip_min_axis_norm;
+    settings["lateral_no_slip_min_cross_norm"] = conf.lateral_no_slip_min_cross_norm;
     settings["soft_constraints"] = conf.soft_constraints;
     settings["w_soft_contact_vel"] = conf.w_soft_contact_vel;
     settings["w_soft_friction"] = conf.w_soft_friction;

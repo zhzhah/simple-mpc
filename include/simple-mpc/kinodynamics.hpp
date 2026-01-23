@@ -49,6 +49,9 @@ namespace simple_mpc
     bool force_cone;
     bool land_cstr;
     bool nonholonomic_rolling;
+    bool enable_lateral_no_slip;
+    double lateral_no_slip_min_axis_norm;
+    double lateral_no_slip_min_cross_norm;
     bool soft_constraints;
     double w_soft_contact_vel;
     double w_soft_friction;

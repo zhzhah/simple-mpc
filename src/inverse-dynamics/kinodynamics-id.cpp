@@ -3,6 +3,7 @@
 #include <iostream>
 #include <tsid/contacts/contact-6d.hpp>
 #include <tsid/contacts/contact-point.hpp>
+#include <tsid/math/constraint-bound.hpp>
 
 using namespace simple_mpc;
 
@@ -235,6 +236,11 @@ void KinodynamicsID::addNonHolonomicRollingConstraint(const std::string &contact
   nonholonomic_constraints_.emplace_back(contact_frame_name, radius);
 }
 
+void KinodynamicsID::addLateralNoSlipConstraint(const std::string &contact_frame_name)
+{
+  lateral_no_slip_constraints_.emplace_back(contact_frame_name);
+}
+
 void KinodynamicsID::solve(
   const double t,
   const Eigen::Ref<const Eigen::VectorXd> & q_meas,
@@ -294,94 +300,153 @@ void KinodynamicsID::solve(
   tsid::solvers::HQPData hqp = solver_data;
 
   // ===========================================================================
-  // [PART A] Non-holonomic rolling constraints (Kinematics)
-  // Fix: Manually inject Wheel Radius into the Jacobian
+  // [PART A] Lateral no-slip constraints (Kinematics)
+  // Implements: v_contact dot c_y = 0
   // ===========================================================================
-  if (settings_.enable_nonholonomic && !nonholonomic_constraints_.empty())
+  const bool need_lateral_no_slip = settings_.enable_lateral_no_slip && !lateral_no_slip_constraints_.empty();
+  const bool need_vector_glide = settings_.use_vector_glide_cost && !lateral_no_slip_constraints_.empty();
+  if (need_lateral_no_slip || need_vector_glide)
   {
     data_handler_.updateInternalData(q_meas, v_meas, true); // Update Jacobians
-    const unsigned int nvar = formulation_.nVar();
-    const unsigned int rows = static_cast<unsigned int>(nonholonomic_constraints_.size());
-    
-    auto eq_nh = std::make_shared<tsid::math::ConstraintEquality>("nonholonomic-rolling", rows, nvar);
-    Eigen::VectorXd b_nh = Eigen::VectorXd::Zero(rows);
+  }
 
-    for (unsigned int ic = 0; ic < nonholonomic_constraints_.size(); ++ic)
+  if (need_vector_glide)
+  {
+    double J_kin = 0.0;
+    bool compute_vector_glide = true;
+    const pinocchio::SE3 & base_pose = data_handler_.getBaseFramePose();
+    const Eigen::Vector3d r_base = base_pose.translation();
+    const Eigen::Matrix3d R_base = base_pose.rotation();
+    const double v_des = targetVelBase_.linear().x();
+    const double omega_des = targetVelBase_.angular().z();
+    Eigen::Vector3d r_O_star = r_base;
+    if (std::abs(omega_des) > 1e-6)
     {
-      const auto &nh = nonholonomic_constraints_[ic];
-      std::size_t foot_nb = model_handler_.getFootNb(nh.contact_frame_name); // Simplified helper if available, else loop
-      
-      const pinocchio::FrameIndex frame_id = model_handler_.getFootFrameId(foot_nb);
-      const pinocchio::JointIndex joint_id = model.frames[frame_id].parentJoint;
-      const int idx_v = model.joints[joint_id].idx_v(); // Velocity index of the wheel joint
+      const Eigen::Vector3d icr_local(0.0, v_des / omega_des, 0.0);
+      r_O_star = r_base + R_base * icr_local;
+    }
+    else
+    {
+      compute_vector_glide = false;
+    }
 
-      // Access internal data
+    for (unsigned int ic = 0; ic < lateral_no_slip_constraints_.size(); ++ic)
+    {
+      const auto &nh = lateral_no_slip_constraints_[ic];
+      std::size_t foot_nb = model_handler_.getFootNb(nh.contact_frame_name);
+      const pinocchio::SE3 & foot_pose = data_handler_.getFootPose(foot_nb);
+      Eigen::Vector3d a_y = foot_pose.rotation().col(1);
+      if (a_y.norm() < settings_.lateral_no_slip_min_axis_norm)
+        a_y = Eigen::Vector3d::UnitY();
+      else
+        a_y.normalize();
+
+      const Eigen::Vector3d g_z = Eigen::Vector3d::UnitZ();
+      Eigen::Vector3d c_x = a_y.cross(g_z);
+      if (c_x.norm() < settings_.lateral_no_slip_min_cross_norm)
+      {
+        Eigen::Vector3d a_x = foot_pose.rotation().col(0);
+        c_x = a_x - g_z * a_x.dot(g_z);
+      }
+      if (c_x.norm() < settings_.lateral_no_slip_min_cross_norm)
+        c_x = Eigen::Vector3d::UnitX();
+      c_x.normalize();
+
+      if (compute_vector_glide)
+      {
+        const Eigen::Vector3d r_contact = foot_pose.translation();
+        const Eigen::Vector3d rho = r_O_star - r_contact;
+        const double rho_norm = rho.norm();
+        if (rho_norm > 1e-9)
+        {
+          const double e_i = rho.dot(c_x);
+          const double term = (e_i / rho_norm);
+          J_kin += settings_.vector_glide_weight * term * term;
+        }
+      }
+    }
+
+    if (compute_vector_glide)
+    {
+      std::cout << "[VectorGlide] J_kin = " << J_kin << std::endl;
+    }
+    else
+    {
+      std::cout << "[VectorGlide] omega_des ~ 0, skip J_kin" << std::endl;
+    }
+  }
+
+  if (need_lateral_no_slip)
+  {
+    const unsigned int nvar = formulation_.nVar();
+    const unsigned int rows = static_cast<unsigned int>(lateral_no_slip_constraints_.size());
+
+    std::shared_ptr<tsid::math::ConstraintBase> nh_constraint;
+    Eigen::VectorXd b_nh = Eigen::VectorXd::Zero(rows);
+    if (settings_.lateral_no_slip_use_bounds)
+    {
+      auto bound = std::make_shared<tsid::math::ConstraintBound>("lateral-no-slip", rows);
+      bound->matrix().resize(rows, nvar);
+      bound->lowerBound().setConstant(rows, settings_.lateral_no_slip_lower);
+      bound->upperBound().setConstant(rows, settings_.lateral_no_slip_upper);
+      nh_constraint = bound;
+    }
+    else
+    {
+      nh_constraint = std::make_shared<tsid::math::ConstraintEquality>("lateral-no-slip", rows, nvar);
+    }
+
+    for (unsigned int ic = 0; ic < lateral_no_slip_constraints_.size(); ++ic)
+    {
+      const auto &nh = lateral_no_slip_constraints_[ic];
+      std::size_t foot_nb = model_handler_.getFootNb(nh.contact_frame_name);
+
+      const pinocchio::FrameIndex frame_id = model_handler_.getFootFrameId(foot_nb);
+
       const pinocchio::Data & data_const = data_handler_.getData();
       pinocchio::Data & data_nc = const_cast<pinocchio::Data &>(data_const);
 
-      // Frame Jacobian (6 x nv) in World Frame
       Eigen::MatrixXd J6 = Eigen::MatrixXd::Zero(6, model.nv);
       pinocchio::getFrameJacobian(model, data_nc, frame_id, pinocchio::LOCAL_WORLD_ALIGNED, J6);
 
-      // Frame Jacobian time variation
-      Eigen::MatrixXd dJ6 = Eigen::MatrixXd::Zero(6, model.nv);
-      pinocchio::getFrameJacobianTimeVariation(model, data_nc, frame_id, pinocchio::LOCAL_WORLD_ALIGNED, dJ6);
-
-      // Tangent direction (Rolling axis cross Normal)
-      // Assuming Wheel Axis is Y, Normal is Z -> Tangent is X
       const pinocchio::SE3 & foot_pose = data_handler_.getFootPose(foot_nb);
-      Eigen::Vector3d axis_world = foot_pose.rotation() * Eigen::Vector3d::UnitY();
-      const Eigen::Vector3d normal_world = Eigen::Vector3d::UnitZ(); // 假定地面法向恒为世界 +Z
-      if (axis_world.norm() > 1e-12)
-        axis_world.normalize();
-      Eigen::Vector3d tangent = axis_world.cross(normal_world);
-      if (tangent.norm() < 1e-8)
+      Eigen::Vector3d a_y = foot_pose.rotation().col(1);
+      if (a_y.norm() < settings_.lateral_no_slip_min_axis_norm)
+        a_y = Eigen::Vector3d::UnitY();
+      else
+        a_y.normalize();
+
+      const Eigen::Vector3d g_z = Eigen::Vector3d::UnitZ();
+      Eigen::Vector3d c_x = a_y.cross(g_z);
+      if (c_x.norm() < settings_.lateral_no_slip_min_cross_norm)
       {
-        // 当轴与法向几乎平行时，改用轮子X轴并投影到地面切平面
-        tangent = foot_pose.rotation() * Eigen::Vector3d::UnitX();
-        tangent -= normal_world * tangent.dot(normal_world);
+        Eigen::Vector3d a_x = foot_pose.rotation().col(0);
+        c_x = a_x - g_z * a_x.dot(g_z);
       }
-      if (tangent.norm() < 1e-8)
-        tangent = Eigen::Vector3d::UnitX();
-      tangent.normalize();
+      if (c_x.norm() < settings_.lateral_no_slip_min_cross_norm)
+        c_x = Eigen::Vector3d::UnitX();
+      c_x.normalize();
 
-      const Eigen::MatrixXd J_lin = J6.block(3, 0, 3, model.nv);
-      const Eigen::MatrixXd dJ_lin = dJ6.block(3, 0, 3, model.nv);
+      Eigen::Vector3d c_y = g_z.cross(c_x);
+      if (c_y.norm() < settings_.lateral_no_slip_min_cross_norm)
+        c_y = Eigen::Vector3d::UnitY();
+      else
+        c_y.normalize();
 
-      // 1. Base & Leg contributions (Standard Jacobian)
-      Eigen::RowVectorXd rowCoeffs = tangent.transpose() * J_lin; 
+      // Pinocchio motion vector ordering is [angular; linear].
+      const Eigen::MatrixXd J_linear = J6.block(3, 0, 3, model.nv);
 
-      // 2. [CRITICAL FIX] Wheel contribution
-      // The equation is: v_contact = v_axle + omega x r = 0
-      // v_tangent = v_axle_tangent + (omega_wheel * R)
-      // So the coefficient for omega_wheel (idx_v) must be R (or -R depending on axis definition)
-      // Standard Pinocchio Jacobian gives 0 for linear part of rotary joint.
-      // We manually add the radius term.
-      if (idx_v >= 0 && idx_v < model.nv) {
-          // Check sign: positive rotation around Y usually drives X forward.
-          // If w > 0 (spin forward), we need v_base to be > 0.
-          // Constraint: v_base - R * w = 0 (assuming rolling without slipping) -> v_base = R * w
-          // Or v_base + R * w = 0?
-          // Let's assume v_contact = v_axle - R * w = 0.
-          // Then J_axle * v - R * w = 0.
-          // So coefficient is -Radius.
-          rowCoeffs(idx_v) += -nh.radius; 
-      }
-
-      // Bias term
-      Eigen::VectorXd v_full = v_meas;
-      double bias = (tangent.transpose() * (dJ_lin * v_full))(0);
-
-      // Fill Matrix
-      for (int col = 0; col < model.nv; ++col) {
-        eq_nh->matrix()(static_cast<int>(ic), col) = rowCoeffs(col);
-      }
-      b_nh(static_cast<int>(ic)) = -bias;
+      Eigen::RowVectorXd rowCoeffs = c_y.transpose() * J_linear;
+      for (int col = 0; col < model.nv; ++col)
+        nh_constraint->matrix()(static_cast<int>(ic), col) = rowCoeffs(col);
+      b_nh(static_cast<int>(ic)) = 0.0;
     }
 
-    eq_nh->setVector(b_nh);
-    if (hqp.size() == 0) hqp.resize(1);
-    hqp[0].push_back(tsid::solvers::aligned_pair<double, std::shared_ptr<tsid::math::ConstraintBase> >(1.0, eq_nh));
+    nh_constraint->setVector(b_nh);
+    if (hqp.size() == 0)
+      hqp.resize(1);
+    hqp[0].push_back(
+      tsid::solvers::aligned_pair<double, std::shared_ptr<tsid::math::ConstraintBase> >(1.0, nh_constraint));
   }
 
   // 2. Solve QP
