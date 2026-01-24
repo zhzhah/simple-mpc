@@ -1,4 +1,6 @@
 import numpy as np
+import os
+import sys
 from bullet_robot import BulletRobot
 from simple_mpc import (
     RobotModelHandler,
@@ -12,6 +14,8 @@ from simple_mpc import (
 import example_robot_data as erd
 import pinocchio as pin
 import pybullet as p
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from geometry_solver import GeometryAdaptor
 
 
 def format_joints_4x4(vec):
@@ -42,7 +46,7 @@ if "standing" not in robot_wrapper.model.referenceConfigurations:
         robot_wrapper.model
     )
 # 手动设置初始位姿：用欧拉角计算四元数
-base_pos = np.array([0.0, 0.0, 0.385])
+base_pos = np.array([0.0, 0.0, 0.305])
 base_rpy = np.array([0.0, 0.0, 0.0])  # roll, pitch, yaw
 R_base = pin.rpy.rpyToMatrix(base_rpy[0], base_rpy[1], base_rpy[2])
 q_base = pin.Quaternion(R_base)
@@ -71,11 +75,11 @@ fref[2] = -model_handler.getMass() / nk * gravity[2]
 u0 = np.concatenate((fref, fref, fref, fref, np.zeros(model_handler.getModel().nv - 6)))
 dt_mpc = 0.01
 
-w_basepos = [0, 0, 100, 0, 0, 100]
-w_legpos = [0, 0, 0]
+w_basepos = [0, 0, 100, 20.0, 20.0, 0]
+w_legpos = [0.1, 0.1, 0.1]
 
 w_basevel = [0, 0, 10, 10, 10, 10]
-w_legvel = [10.1, 10.1, 10.1]
+w_legvel = [1.1, 1.1, 1.1]
 model = model_handler.getModel()
 wheel_joints = [
     "FL_wheel_joint",
@@ -165,9 +169,9 @@ problem_conf = dict(
     use_vector_glide_cost=True,
     vector_glide_weight=100.0,
     vector_glide_min_omega=1e-6,
-    min_wheel_distance_cstr=True,
+    min_wheel_distance_cstr=False,
     min_wheel_distance=1.2 * 2.0 * wheel_radius,
-    min_wheel_distance_cost=True,
+    min_wheel_distance_cost=False,
     w_min_wheel_distance=0.05,
     min_wheel_distance_cost_eps=1e-1,
     force_z_variance_cost=True,
@@ -274,7 +278,7 @@ kino_ID_settings.enable_lateral_no_slip = False
 kino_ID_settings.lateral_no_slip_use_bounds = True
 kino_ID_settings.lateral_no_slip_lower = -3
 kino_ID_settings.lateral_no_slip_upper = 3
-kino_ID_settings.use_vector_glide_cost = False
+kino_ID_settings.use_vector_glide_cost = True
 kino_ID_settings.vector_glide_weight = 1.0
 kino_ID = KinodynamicsID(model_handler, dt_simu, kino_ID_settings)
 kino_ID.addLateralNoSlipConstraint("FL_wheel")
@@ -363,6 +367,24 @@ current_ref_pos_y = q_meas[1]
 initial_height = q_meas[2]
 base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
 current_ref_yaw = np.arctan2(base_R_world[1, 0], base_R_world[0, 0])
+# Geometry solver (Ackermann-like kinematic alignment)
+foot_pos_base = np.array(
+    [
+        [0.3, 0.15, -initial_height],
+        [0.3, -0.15, -initial_height],
+        [-0.3, 0.15, -initial_height],
+        [-0.3, -0.15, -initial_height],
+    ]
+)
+axle_dir_base = np.array(
+    [
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ]
+)
+geo_solver = GeometryAdaptor(foot_pos_base, axle_dir_base)
 for step in range(300000):
     v_body_cmd[0] = p.readUserDebugParameter(forward_speed_slider)
     v_body_cmd[5] = p.readUserDebugParameter(yaw_rate_slider)
@@ -505,10 +527,24 @@ for step in range(300000):
         q_interp[0] = current_ref_pos_x
         q_interp[1] = current_ref_pos_y
         q_interp[2] = initial_height
-        q_interp[3] = 0.0
-        q_interp[4] = 0.0
-        q_interp[5] = np.sin(current_ref_yaw * 0.5)
-        q_interp[6] = np.cos(current_ref_yaw * 0.5)
+        geo = geo_solver.solve(user_v_cmd, user_w_cmd, yaw=current_ref_yaw)
+        q_roll = geo.roll
+        q_pitch = geo.pitch
+        q_yaw = current_ref_yaw
+        qx = np.sin(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.cos(q_yaw * 0.5) - np.cos(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
+        qy = np.cos(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.cos(q_yaw * 0.5) + np.sin(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
+        qz = np.cos(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.sin(q_yaw * 0.5) - np.sin(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.cos(q_yaw * 0.5)
+        qw = np.cos(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.cos(q_yaw * 0.5) + np.sin(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
+        q_interp[3] = qx
+        q_interp[4] = qy
+        q_interp[5] = qz
+        q_interp[6] = qw
+
+        # Optional: apply toe offsets to hip joints (verify indices for your URDF)
+        hip_joint_indices = [7, 10, 13, 16]
+        for i, idx in enumerate(hip_joint_indices):
+            if idx < q_interp.shape[0]:
+                q_interp[idx] += geo.toe_offsets[i]
 
         q_meas, v_meas = device.measureState()
         base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()

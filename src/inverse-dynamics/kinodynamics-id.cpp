@@ -122,8 +122,9 @@ KinodynamicsID::KinodynamicsID(const RobotModelHandler & model_handler, double c
 
   // Add actuation limit task
   actuationTask_ = std::make_unique<tsid::tasks::TaskActuationBounds>("actuation-limits", robot_);
+  const Eigen::VectorXd tau_limit = 2.0 * model_handler_.getModel().effortLimit.tail(nu);
   actuationTask_->setBounds(
-    -model_handler_.getModel().effortLimit.tail(nu), model_handler_.getModel().effortLimit.tail(nu));
+    -tau_limit, tau_limit);
   formulation_.addActuationTask(*actuationTask_, 1.0, 0); // No weight needed as it is set as constraint
 
   // Create an HQP solver
