@@ -25,28 +25,29 @@ def format_joints_4x4(vec):
 from example_robot_data.robots_loader import ROBOTS, RobotLoader
 import time
 import copy
+import xml.etree.ElementTree as ET
 
 # ####### CONFIGURATION  ############
-# Load robot
-URDF_SUBPATH = "/go2w_description/urdf/go2w.urdf"
+# Load robot (BQR3W)
+URDF_SUBPATH = "/BQR3W_description/urdf/BQR3_350_go2name.urdf"
 base_joint_name = "root_joint"
-if "go2w" not in ROBOTS:
-    class Go2WLoader(RobotLoader):
-        path = "go2w_description"
-        urdf_filename = "go2w.urdf"
+if "BQR3W_go2name" not in ROBOTS:
+    class BQR3WLoader(RobotLoader):
+        path = "BQR3W_description"
+        urdf_filename = "BQR3_350_go2name.urdf"
         urdf_subpath = "urdf"
-        srdf_filename = "go2w.srdf"
+        srdf_filename = "BQR3_350.srdf"
         ref_posture = "standing"
         free_flyer = True
 
-    ROBOTS["go2w"] = Go2WLoader
-robot_wrapper = erd.load("go2w")
+    ROBOTS["BQR3W_go2name"] = BQR3WLoader
+robot_wrapper = erd.load("BQR3W_go2name")
 if "standing" not in robot_wrapper.model.referenceConfigurations:
     robot_wrapper.model.referenceConfigurations["standing"] = pin.neutral(
         robot_wrapper.model
     )
 # 手动设置初始位姿：用欧拉角计算四元数
-base_pos = np.array([0.0, 0.0, 0.305])
+base_pos = np.array([0.0, 0.0, 0.605])
 base_rpy = np.array([0.0, 0.0, 0.0])  # roll, pitch, yaw
 R_base = pin.rpy.rpyToMatrix(base_rpy[0], base_rpy[1], base_rpy[2])
 q_base = pin.Quaternion(R_base)
@@ -78,7 +79,7 @@ dt_mpc = 0.01
 w_basepos = [0, 0, 100, 20.0, 20.0, 0]
 w_legpos = [0.1, 0.1, 0.1]
 
-w_basevel = [0, 0, 10, 10, 10, 10]
+w_basevel = [10, 10, 10, 10, 10, 10]
 w_legvel = [1.1, 1.1, 1.1]
 model = model_handler.getModel()
 wheel_joints = [
@@ -91,9 +92,9 @@ wheel_q_indices = []
 wheel_v_indices = []
 wheel_u_indices = []
 wheel_meas_indices = []
-wheel_vel_limit = 3.0 * 100.0 * 2.0 * np.pi / 60.0
+wheel_radius = 0.125
+wheel_vel_limit = 18.85
 wheel_target_vel = 10.0 * 2.0 * np.pi / 60.0
-wheel_radius = 0.0762
 joint_names_complete = list(model.names)[2:]
 for joint_name in wheel_joints:
     joint_id = model.getJointId(joint_name)
@@ -106,6 +107,48 @@ for joint_name in wheel_joints:
     wheel_u_indices.extend(range(idx_v - 6, idx_v - 6 + nv_joint))
     wheel_meas_indices.append(6 + joint_names_complete.index(joint_name))
     model.velocityLimit[idx_v : idx_v + nv_joint] = wheel_vel_limit
+
+# Override joint torque limits using original BQR3 URDF values
+original_urdf_path = os.path.join(
+    erd.getModelPath(""), "BQR3_350/urdf/BQR3W_350.urdf"
+)
+tree = ET.parse(original_urdf_path)
+root = tree.getroot()
+original_limits = {}
+for joint in root.findall("joint"):
+    name = joint.get("name")
+    limit = joint.find("limit")
+    if limit is not None and limit.get("effort") is not None:
+        original_limits[name] = float(limit.get("effort"))
+
+joint_map = {
+    "Abd1Joint": "FL_hip_joint",
+    "Hip1Joint": "FL_thigh_joint",
+    "Knee1Joint": "FL_calf_joint",
+    "Wheel1Joint": "FL_wheel_joint",
+    "Abd2Joint": "FR_hip_joint",
+    "Hip2Joint": "FR_thigh_joint",
+    "Knee2Joint": "FR_calf_joint",
+    "Wheel2Joint": "FR_wheel_joint",
+    "Abd3Joint": "RL_hip_joint",
+    "Hip3Joint": "RL_thigh_joint",
+    "Knee3Joint": "RL_calf_joint",
+    "Wheel3Joint": "RL_wheel_joint",
+    "Abd4Joint": "RR_hip_joint",
+    "Hip4Joint": "RR_thigh_joint",
+    "Knee4Joint": "RR_calf_joint",
+    "Wheel4Joint": "RR_wheel_joint",
+}
+
+for src_name, dst_name in joint_map.items():
+    if src_name not in original_limits:
+        continue
+    joint_id = model.getJointId(dst_name)
+    if joint_id <= 0:
+        continue
+    idx_v = model.joints[joint_id].idx_v
+    nv_joint = model.joints[joint_id].nv
+    model.effortLimit[idx_v : idx_v + nv_joint] = original_limits[src_name]
 
 w_q = np.zeros(model.nv)
 w_v = np.zeros(model.nv)
@@ -130,7 +173,7 @@ w_u = np.concatenate((w_linforce, w_linforce, w_linforce, w_linforce, w_u_joints
 w_u = np.diag(w_u)
 w_LFRF = 6000
 w_cent_lin = np.array([0.0, 0.0, 1])
-w_cent_ang = np.array([0.0, 0.1, 10])
+w_cent_ang = np.array([0.1, 0.1, 10])
 w_cent = np.diag(np.concatenate((w_cent_lin, w_cent_ang)))
 w_centder_lin = np.ones(3) * 0.0
 w_centder_ang = np.ones(3) * 0.1
@@ -169,11 +212,11 @@ problem_conf = dict(
     use_vector_glide_cost=True,
     vector_glide_weight=100.0,
     vector_glide_min_omega=1e-6,
-    min_wheel_distance_cstr=False,
+    min_wheel_distance_cstr=True,
     min_wheel_distance=1.2 * 2.0 * wheel_radius,
     min_wheel_distance_cost=True,
-    w_min_wheel_distance=0.05,
-    min_wheel_distance_cost_eps=1e-1,
+    w_min_wheel_distance=100.5,
+    min_wheel_distance_cost_eps=1e-2,
     force_z_variance_cost=True,
     w_force_z_variance=10.0,
     joint_limit_soft_cost=True,
@@ -280,6 +323,11 @@ kino_ID_settings.lateral_no_slip_lower = -3
 kino_ID_settings.lateral_no_slip_upper = 3
 kino_ID_settings.use_vector_glide_cost = True
 kino_ID_settings.vector_glide_weight = 1.0
+kino_ID_settings.enable_pendulum_coupling = False
+kino_ID_settings.pendulum_weight = 1.0
+kino_ID_settings.pendulum_min_front_rear_dist = 0.3
+kino_ID_settings.pendulum_max_front_rear_dist = 0.6
+kino_ID_settings.pendulum_omega_eps = 1e-6
 kino_ID = KinodynamicsID(model_handler, dt_simu, kino_ID_settings)
 kino_ID.addLateralNoSlipConstraint("FL_wheel")
 kino_ID.addLateralNoSlipConstraint("FR_wheel")
@@ -508,43 +556,43 @@ for step in range(300000):
         v_interp = xs_interp[mpc.getModelHandler().getModel().nq :]
         force_interp = [force_interp[i, :] for i in range(4)]
 
-        user_v_cmd = v_body_cmd[0]
-        user_w_cmd = v_body_cmd[5]
-        current_ref_yaw += user_w_cmd * dt_simu
-        v_world_x = user_v_cmd * np.cos(current_ref_yaw)
-        v_world_y = user_v_cmd * np.sin(current_ref_yaw)
-        current_ref_pos_x += v_world_x * dt_simu
-        current_ref_pos_y += v_world_y * dt_simu
+        # user_v_cmd = v_body_cmd[0]
+        # user_w_cmd = v_body_cmd[5]
+        # current_ref_yaw += user_w_cmd * dt_simu
+        # v_world_x = user_v_cmd * np.cos(current_ref_yaw)
+        # v_world_y = user_v_cmd * np.sin(current_ref_yaw)
+        # current_ref_pos_x += v_world_x * dt_simu
+        # current_ref_pos_y += v_world_y * dt_simu
 
-        v_interp[:6] = 0.0
-        v_interp[0] = v_world_x
-        v_interp[1] = v_world_y
-        v_interp[2] = 0.0
-        v_interp[3] = 0.0
-        v_interp[4] = 0.0
-        v_interp[5] = user_w_cmd
+        # v_interp[:6] = 0.0
+        # v_interp[0] = v_world_x
+        # v_interp[1] = v_world_y
+        # v_interp[2] = 0.0
+        # v_interp[3] = 0.0
+        # v_interp[4] = 0.0
+        # v_interp[5] = user_w_cmd
 
-        q_interp[0] = current_ref_pos_x
-        q_interp[1] = current_ref_pos_y
-        q_interp[2] = initial_height
-        geo = geo_solver.solve(user_v_cmd, user_w_cmd, yaw=current_ref_yaw)
-        q_roll = geo.roll
-        q_pitch = geo.pitch
-        q_yaw = current_ref_yaw
-        qx = np.sin(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.cos(q_yaw * 0.5) - np.cos(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
-        qy = np.cos(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.cos(q_yaw * 0.5) + np.sin(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
-        qz = np.cos(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.sin(q_yaw * 0.5) - np.sin(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.cos(q_yaw * 0.5)
-        qw = np.cos(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.cos(q_yaw * 0.5) + np.sin(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
-        q_interp[3] = qx
-        q_interp[4] = qy
-        q_interp[5] = qz
-        q_interp[6] = qw
+        # q_interp[0] = current_ref_pos_x
+        # q_interp[1] = current_ref_pos_y
+        # q_interp[2] = initial_height
+        # geo = geo_solver.solve(user_v_cmd, user_w_cmd, yaw=current_ref_yaw)
+        # q_roll = geo.roll
+        # q_pitch = geo.pitch
+        # q_yaw = current_ref_yaw
+        # qx = np.sin(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.cos(q_yaw * 0.5) - np.cos(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
+        # qy = np.cos(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.cos(q_yaw * 0.5) + np.sin(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
+        # qz = np.cos(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.sin(q_yaw * 0.5) - np.sin(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.cos(q_yaw * 0.5)
+        # qw = np.cos(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.cos(q_yaw * 0.5) + np.sin(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
+        # q_interp[3] = qx
+        # q_interp[4] = qy
+        # q_interp[5] = qz
+        # q_interp[6] = qw
 
         # Optional: apply toe offsets to hip joints (verify indices for your URDF)
-        hip_joint_indices = [7, 10, 13, 16]
-        for i, idx in enumerate(hip_joint_indices):
-            if idx < q_interp.shape[0]:
-                q_interp[idx] += geo.toe_offsets[i]
+        # hip_joint_indices = [7, 10, 13, 16]
+        # for i, idx in enumerate(hip_joint_indices):
+        #     if idx < q_interp.shape[0]:
+        #         q_interp[idx] += geo.toe_offsets[i]
 
         q_meas, v_meas = device.measureState()
         base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()

@@ -92,6 +92,12 @@ namespace simple_mpc
   // VectorGlide cost (debug metric for Ackermann-like alignment)
   bool use_vector_glide_cost = false;
   double vector_glide_weight = 1.0;
+  // Inverted pendulum coupling (x-pitch)
+  bool enable_pendulum_coupling = false;
+  double pendulum_weight = 1.0;
+  double pendulum_min_front_rear_dist = 0.3;
+  double pendulum_max_front_rear_dist = 0.6;
+  double pendulum_omega_eps = 1e-6;
 
       // Tasks weights
       double w_base = -1.;           // Disabled by default

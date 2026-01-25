@@ -292,6 +292,73 @@ void KinodynamicsID::solve(
   const pinocchio::Motion a_world_aligned{oMb_rotation.act(pinocchio::Motion(targetAccBase_))};
   sampleBase_.setDerivative(v_world_aligned.toVector());
   sampleBase_.setSecondDerivative(a_world_aligned.toVector()); // Fixed: setSecondDerivative for acceleration
+  if (settings_.enable_pendulum_coupling)
+  {
+    const pinocchio::SE3 & base_pose = data_handler_.getBaseFramePose();
+    const Eigen::Vector3d base_pos = base_pose.translation();
+    const Eigen::Matrix3d base_R = base_pose.rotation();
+    const double yaw = std::atan2(base_R(1, 0), base_R(0, 0));
+    const Eigen::Vector3d com = data_handler_.getData().com[0];
+    double v_com_x = 0.0;
+    if (data_handler_.getData().vcom.size() > 0)
+      v_com_x = data_handler_.getData().vcom[0].x();
+
+    Eigen::Vector3d front_avg = Eigen::Vector3d::Zero();
+    Eigen::Vector3d rear_avg = Eigen::Vector3d::Zero();
+    int front_n = 0;
+    int rear_n = 0;
+    for (std::size_t foot_nb = 0; foot_nb < model_handler_.getFeetNb(); ++foot_nb)
+    {
+      const std::string & name = model_handler_.getFootFrameName(foot_nb);
+      const Eigen::Vector3d p = data_handler_.getFootPose(foot_nb).translation();
+      if (name.find("FL") != std::string::npos || name.find("FR") != std::string::npos)
+      {
+        front_avg += p;
+        front_n++;
+      }
+      else if (name.find("RL") != std::string::npos || name.find("RR") != std::string::npos)
+      {
+        rear_avg += p;
+        rear_n++;
+      }
+    }
+    if (front_n > 0) front_avg /= front_n;
+    if (rear_n > 0) rear_avg /= rear_n;
+
+    const double front_rear_dist = std::abs(front_avg.x() - rear_avg.x());
+    const double denom = std::max(settings_.pendulum_max_front_rear_dist - settings_.pendulum_min_front_rear_dist, 1e-6);
+    double scale = (front_rear_dist - settings_.pendulum_min_front_rear_dist) / denom;
+    if (scale < 0.0) scale = 0.0;
+    if (scale > 1.0) scale = 1.0;
+
+    const double com_z = std::max(com.z(), 1e-3);
+    const double omega0 = std::sqrt(9.81 / com_z);
+    double x_rel_des = 0.0;
+    if (std::abs(omega0) > settings_.pendulum_omega_eps)
+      x_rel_des = v_com_x / omega0;
+
+    const double avg_wheel_x = 0.5 * (front_avg.x() + rear_avg.x());
+    const double e = (avg_wheel_x - com.x()) - x_rel_des;
+
+    // Adjust base reference x and pitch using pendulum coupling
+    const Eigen::Vector3d rpy_cur = pinocchio::rpy::matrixToRpy(base_R);
+    const double roll_cur = rpy_cur.x();
+    const double pitch_cur = rpy_cur.y();
+    const double pitch_des = std::atan2(x_rel_des, com_z);
+
+    pinocchio::SE3 base_des = base_pose;
+    base_des.translation().x() += e;
+    const Eigen::Matrix3d R_des =
+      pinocchio::rpy::rpyToMatrix(roll_cur, pitch_des, yaw);
+    base_des.rotation() = R_des;
+    tsid::math::SE3ToVector(base_des, sampleBase_.pos);
+
+    Eigen::VectorXd Kp = settings_.kp_base * Eigen::VectorXd::Ones(6);
+    Kp[0] *= scale;
+    Kp[4] *= settings_.pendulum_weight;
+    baseTask_->Kp(Kp);
+    baseTask_->Kd(2.0 * baseTask_->Kp().cwiseSqrt());
+  }
   baseTask_->setReference(sampleBase_);
 
   // 1. Compute Standard Problem Data

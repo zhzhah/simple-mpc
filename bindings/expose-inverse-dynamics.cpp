@@ -83,7 +83,12 @@ namespace simple_mpc
         .def_readwrite("lateral_no_slip_lower", &KinodynamicsID::Settings::lateral_no_slip_lower)
         .def_readwrite("lateral_no_slip_upper", &KinodynamicsID::Settings::lateral_no_slip_upper)
         .def_readwrite("use_vector_glide_cost", &KinodynamicsID::Settings::use_vector_glide_cost)
-        .def_readwrite("vector_glide_weight", &KinodynamicsID::Settings::vector_glide_weight);
+        .def_readwrite("vector_glide_weight", &KinodynamicsID::Settings::vector_glide_weight)
+        .def_readwrite("enable_pendulum_coupling", &KinodynamicsID::Settings::enable_pendulum_coupling)
+        .def_readwrite("pendulum_weight", &KinodynamicsID::Settings::pendulum_weight)
+        .def_readwrite("pendulum_min_front_rear_dist", &KinodynamicsID::Settings::pendulum_min_front_rear_dist)
+        .def_readwrite("pendulum_max_front_rear_dist", &KinodynamicsID::Settings::pendulum_max_front_rear_dist)
+        .def_readwrite("pendulum_omega_eps", &KinodynamicsID::Settings::pendulum_omega_eps);
 
       bp::class_<KinodynamicsID, boost::noncopyable>(
         "KinodynamicsID", bp::init<const simple_mpc::RobotModelHandler &, double, const KinodynamicsID::Settings>(
