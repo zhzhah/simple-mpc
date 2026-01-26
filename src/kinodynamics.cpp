@@ -14,6 +14,7 @@
 #include "simple-mpc/soft-constraints.hpp"
 #include "simple-mpc/track-width.hpp"
 #include "simple-mpc/foot-sum.hpp"
+#include "simple-mpc/foot-coplanar.hpp"
 #include "simple-mpc/lateral-no-slip.hpp"
 #include "simple-mpc/vector-glide.hpp"
 #include "simple-mpc/wheel-distance.hpp"
@@ -297,6 +298,17 @@ namespace simple_mpc
       WheelDistanceResidual wheel_dist_residual(
         space.ndx(), nu_, model_handler_.getModel(), pairs, settings_.min_wheel_distance);
       stm.addConstraint(wheel_dist_residual, NegativeOrthant());
+    }
+
+    if (settings_.foot_height_cstr && model_handler_.getFeetNb() >= 4)
+    {
+      std::array<pinocchio::FrameIndex, 4> frame_ids;
+      for (size_t i = 0; i < 4; i++)
+      {
+        frame_ids[i] = model_handler_.getFootFrameId(i);
+      }
+      FootCoplanarResidual coplanar_residual(space.ndx(), nu_, model_handler_.getModel(), frame_ids);
+      stm.addConstraint(coplanar_residual, EqualityConstraint());
     }
 
     if (settings_.kinematics_limits)

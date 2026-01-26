@@ -74,6 +74,8 @@ namespace simple_mpc
     bool foot_sum_cstr;
     double w_foot_sum;
     double foot_sum_z_offset;
+    bool foot_height_cstr = false;
+    double foot_height = 0.0;
   };
 
   class KinodynamicsOCP : public OCPHandler

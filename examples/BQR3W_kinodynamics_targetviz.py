@@ -77,14 +77,14 @@ gravity = np.array([0, 0, -9.81])
 fref = np.zeros(force_size)
 fref[2] = -model_handler.getMass() / nk * gravity[2]
 u0 = np.concatenate((fref, fref, fref, fref, np.zeros(model_handler.getModel().nv - 6)))
-dt_mpc = 0.1  # MPC period (s)
+dt_mpc = 0.005  # MPC period (s)
 dt_simu = 0.001  # fixed simulation period (s)
 
-w_basepos = [0, 0, 100, 20.0, 3.0, 100]
+w_basepos = [10, 10, 100, 20.0, 3.0, 10]
 w_legpos = [1.1, 1.1, 1.1]
 
 w_basevel = [10, 10, 10, 10, 10, 10]
-w_legvel = [1.1, 1.1, 1.1]
+w_legvel = [0.1, 0.1, 0.1]
 model = model_handler.getModel()
 wheel_joints = [
     "FL_wheel_joint",
@@ -213,17 +213,17 @@ problem_conf = dict(
     enable_lateral_no_slip=True,
     lateral_no_slip_min_axis_norm=1e-12,
     lateral_no_slip_min_cross_norm=1e-8,
-    use_vector_glide_cost=False,
+    use_vector_glide_cost=True,
     vector_glide_weight=100.0,
     vector_glide_min_omega=1e-6,
-    min_wheel_distance_cstr=True,
+    min_wheel_distance_cstr=False,
     min_wheel_distance=1.2 * 2.0 * wheel_radius,
-    min_wheel_distance_cost=True,
+    min_wheel_distance_cost=False,
     w_min_wheel_distance=100.5,
     min_wheel_distance_cost_eps=1e-2,
     force_z_variance_cost=True,
     w_force_z_variance=10.0,
-    joint_limit_soft_cost=True,
+    joint_limit_soft_cost=False,
     w_joint_limit_soft=2.0,
     joint_limit_soft_fraction=0.5,
     soft_constraints=True,
@@ -235,6 +235,8 @@ problem_conf = dict(
     foot_sum_cstr=False,
     w_foot_sum=w_LFRF,
     foot_sum_z_offset=wheel_radius,
+    foot_height_cstr=False,
+    foot_height=0.0,
 )
 T = 100
 
@@ -352,10 +354,49 @@ device.initializeJoints(
 )
 device.changeCamera(1.0, 60, -15, [0.6, -0.2, 0.5])
 
-# 机身系速度指令（来自可视化滑条）
-v_body_cmd = np.zeros(6)
-v_world_cmd = np.zeros(6)
-v_body_cmd[0] = wheel_target_vel * wheel_radius
+# Target pose visualization (ghost robots)
+target_model_path = erd.getModelPath(URDF_SUBPATH)
+p.setAdditionalSearchPath(target_model_path)
+
+
+def _spawn_ghost(color_rgba):
+    ghost_id = p.loadURDF(
+        URDF_SUBPATH, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], useFixedBase=True
+    )
+    local_inertia_pos = np.array(p.getDynamicsInfo(ghost_id, -1)[3])
+    bullet_joint_names = [
+        p.getJointInfo(ghost_id, i)[1].decode()
+        for i in range(p.getNumJoints(ghost_id))
+    ]
+    joint_indices = [
+        bullet_joint_names.index(model_handler.getModel().names[i])
+        for i in range(2, model_handler.getModel().njoints)
+    ]
+    for link_id in range(-1, p.getNumJoints(ghost_id)):
+        p.setCollisionFilterGroupMask(ghost_id, link_id, 0, 0)
+        p.changeVisualShape(ghost_id, link_id, rgbaColor=color_rgba)
+    return ghost_id, local_inertia_pos, joint_indices
+
+
+target_robot_id, target_local_inertia_pos, target_joint_indices = _spawn_ghost([0.2, 0.8, 0.2, 0.35])
+terminal_robot_id, terminal_local_inertia_pos, terminal_joint_indices = _spawn_ghost([0.9, 0.4, 0.2, 0.35])
+
+
+def _update_ghost(robot_id, local_inertia_pos, joint_indices, q_ref_full):
+    R_ref = pin.Quaternion(q_ref_full[3:7]).toRotationMatrix()
+    offset = R_ref @ local_inertia_pos
+    pos = [
+        q_ref_full[0] + offset[0],
+        q_ref_full[1] + offset[1],
+        q_ref_full[2] + offset[2],
+    ]
+    p.resetBasePositionAndOrientation(robot_id, pos, q_ref_full[3:7])
+    for i, j_idx in enumerate(joint_indices):
+        p.resetJointState(robot_id, j_idx, q_ref_full[7 + i])
+
+# go2-style world-frame velocity command (with sliders)
+v_cmd = np.zeros(6)
+v_cmd[0] = 0.2
 
 wheel_link_names = ["FL_wheel", "FR_wheel", "RL_wheel", "RR_wheel"]
 wheel_link_ids = {}
@@ -399,14 +440,7 @@ atexit.register(_save_recording)
 
 x_measured = None
 q_meas, v_meas = device.measureState()
-base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
-yaw = np.arctan2(base_R_world[1, 0], base_R_world[0, 0])
-cy = np.cos(yaw)
-sy = np.sin(yaw)
-R_yaw = np.array([[cy, -sy, 0.0], [sy, cy, 0.0], [0.0, 0.0, 1.0]])
-v_world_cmd[:3] = R_yaw @ v_body_cmd[:3]
-v_world_cmd[3:6] = R_yaw @ v_body_cmd[3:6]
-mpc.velocity_base = v_world_cmd
+mpc.velocity_base = v_cmd
 x_measured = np.concatenate([q_meas, v_meas])
 
 device.showQuadrupedFeet(
@@ -435,19 +469,24 @@ com_measured = []
 solve_time = []
 L_measured = []
 
-mpc.velocity_base = v_world_cmd
-forward_speed_slider = p.addUserDebugParameter("forward_speed_body", -1.0, 1.0, v_body_cmd[0])
-yaw_rate_slider = p.addUserDebugParameter("yaw_rate_body", -1.0, 1.0, 0.0)
-# Simulation control: use keyboard keys instead of sliders
+mpc.velocity_base = v_cmd
+forward_speed_slider = p.addUserDebugParameter("forward_speed_world", -1.0, 1.0, v_cmd[0])
+yaw_rate_slider = p.addUserDebugParameter("yaw_rate_world", -1.0, 1.0, v_cmd[5])
+# Simulation control: use keyboard keys
 # 'p' toggles pause/resume, 'n' single-steps one outer iteration
 paused = False  # start paused as requested
 prev_step_pressed = False
-wheel_target_vel_prev = v_body_cmd[0] / wheel_radius
+wheel_target_vel_prev = v_cmd[0] / wheel_radius
 wheel_pos_ref = None
 base_pos_ref = None
 q_meas, v_meas = device.measureState()
 initial_height = q_meas[2]
 base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
+# Reference anchor: start from initial pose, then integrate only by command
+ref_state_anchor = model_handler.getReferenceState().copy()
+ref_x = float(q_meas[0])
+ref_y = float(q_meas[1])
+ref_yaw = np.arctan2(base_R_world[1, 0], base_R_world[0, 0])
 # Geometry solver (Ackermann-like kinematic alignment)
 foot_pos_base = np.array(
     [
@@ -467,49 +506,38 @@ axle_dir_base = np.array(
 )
 geo_solver = GeometryAdaptor(foot_pos_base, axle_dir_base)
 for step in range(300000):
-    v_body_cmd[0] = p.readUserDebugParameter(forward_speed_slider)
-    v_body_cmd[5] = p.readUserDebugParameter(yaw_rate_slider)
-    # 只允许机身系 x 方向速度与 yaw 角速度，禁止横向/竖向/翻滚俯仰速度
-    v_body_cmd[1] = 0.0
-    v_body_cmd[2] = 0.0
-    v_body_cmd[3] = 0.0
-    v_body_cmd[4] = 0.0
-    # 用当前机身姿态把机身系前进速度投影到世界系（只取 yaw）
+    v_cmd[0] = p.readUserDebugParameter(forward_speed_slider)
+    v_cmd[5] = p.readUserDebugParameter(yaw_rate_slider)
     q_meas, v_meas = device.measureState()
-    base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
-    yaw = np.arctan2(base_R_world[1, 0], base_R_world[0, 0])
-
-    v_world_cmd[:] = 0.0
-    v_world_cmd[0] = v_body_cmd[0] * np.cos(yaw)
-    v_world_cmd[1] = v_body_cmd[0] * np.sin(yaw)
-    v_world_cmd[5] = v_body_cmd[5]
-    mpc.velocity_base = v_world_cmd
-    # Reference pose: current pose integrated only one MPC period (no history)
+    mpc.velocity_base = v_cmd
+    wheel_target_vel = v_cmd[0] / wheel_radius
+    # Reference trajectory: propagate along the horizon
     horizon = T
-    ref_state = model_handler.getReferenceState().copy()
-    dt_ref = dt_mpc
-    ref_yaw = yaw + v_body_cmd[5] * dt_ref
-    dx = v_body_cmd[0] * dt_ref
-    ref_x = q_meas[0] + dx * np.cos(ref_yaw)
-    ref_y = q_meas[1] + dx * np.sin(ref_yaw)
-    R_ref = pin.rpy.rpyToMatrix(0.0, 0.0, ref_yaw)
-    q_ref = pin.Quaternion(R_ref).coeffs()
     v_ref = np.zeros(6)
-    v_ref[0] = v_body_cmd[0] * np.cos(ref_yaw)
-    v_ref[1] = v_body_cmd[0] * np.sin(ref_yaw)
-    v_ref[5] = v_body_cmd[5]
+    v_ref[:] = v_cmd
+    x0 = float(ref_x)
+    y0 = float(ref_y)
+    yaw0 = float(ref_yaw)
     for t_idx in range(horizon):
-        x_ref = ref_state.copy()
-        x_ref[0] = ref_x
-        x_ref[1] = ref_y
+        dt_ref = (t_idx + 1) * dt_mpc
+        yaw_t = yaw0 + v_cmd[5] * dt_ref
+        x_t = x0 + v_cmd[0] * np.cos(yaw_t) * dt_ref
+        y_t = y0 + v_cmd[0] * np.sin(yaw_t) * dt_ref
+        R_ref = pin.rpy.rpyToMatrix(0.0, 0.0, yaw_t)
+        q_ref = pin.Quaternion(R_ref).coeffs()
+        x_ref = ref_state_anchor.copy()
+        x_ref[0] = x_t
+        x_ref[1] = y_t
         x_ref[3:7] = q_ref
         x_ref[nq : nq + 6] = v_ref
         mpc.ocp_handler.setReferenceState(t_idx, x_ref)
-    print("base q", q_meas[:7])
-    print("yaw(deg)", yaw * 180.0 / np.pi)
-    print("cmd body", v_body_cmd)
-    print("cmd yaw-only world", v_world_cmd)
-    wheel_target_vel = v_body_cmd[0] / wheel_radius
+    # advance the anchor by one MPC step
+    ref_yaw = yaw0 + v_cmd[5] * dt_mpc
+    ref_x = x0 + v_cmd[0] * np.cos(ref_yaw) * dt_mpc
+    ref_y = y0 + v_cmd[0] * np.sin(ref_yaw) * dt_mpc
+    # Visualize the exact reference state used by MPC (t = 0)
+    x_ref0 = np.asarray(mpc.ocp_handler.getReferenceState(0)).copy()
+    _update_ghost(target_robot_id, target_local_inertia_pos, target_joint_indices, x_ref0[:nq])
     # Keyboard control: 'p' toggle pause, 'n' single-step
     events = p.getKeyboardEvents()
     if ord('p') in events and events[ord('p')] & p.KEY_WAS_TRIGGERED:
@@ -542,6 +570,9 @@ for step in range(300000):
     mpc.iterate(x_measured)
     end = time.time()
     solve_time.append(end - start)
+    if len(mpc.xs) > 0:
+        x_last = np.asarray(mpc.xs[-1]).copy()
+        _update_ghost(terminal_robot_id, terminal_local_inertia_pos, terminal_joint_indices, x_last[:nq])
     if step == 0:
         try:
             print("[recording] len(mpc.xs) =", len(mpc.xs))

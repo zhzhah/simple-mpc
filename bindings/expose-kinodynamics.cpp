@@ -55,6 +55,10 @@ namespace simple_mpc::python
     conf.foot_sum_cstr = bp::extract<bool>(settings["foot_sum_cstr"]);
     conf.w_foot_sum = bp::extract<double>(settings["w_foot_sum"]);
     conf.foot_sum_z_offset = bp::extract<double>(settings["foot_sum_z_offset"]);
+    if (settings.has_key("foot_height_cstr"))
+      conf.foot_height_cstr = bp::extract<bool>(settings["foot_height_cstr"]);
+    if (settings.has_key("foot_height"))
+      conf.foot_height = bp::extract<double>(settings["foot_height"]);
 
     return new KinodynamicsOCP(conf, model_handler);
   }
@@ -105,6 +109,8 @@ namespace simple_mpc::python
     settings["foot_sum_cstr"] = conf.foot_sum_cstr;
     settings["w_foot_sum"] = conf.w_foot_sum;
     settings["foot_sum_z_offset"] = conf.foot_sum_z_offset;
+    settings["foot_height_cstr"] = conf.foot_height_cstr;
+    settings["foot_height"] = conf.foot_height;
 
     return settings;
   }

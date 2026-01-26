@@ -1,5 +1,29 @@
 #include <simple-mpc/inverse-dynamics/kinodynamics-id.hpp>
 #include <pinocchio/algorithm/frames.hpp>
+#include <cmath>
+
+namespace {
+inline Eigen::Vector3d rpyFromMatrix(const Eigen::Matrix3d & R) {
+  const double roll = std::atan2(R(2,1), R(2,2));
+  const double pitch = std::atan2(-R(2,0), std::sqrt(R(0,0)*R(0,0) + R(1,0)*R(1,0)));
+  const double yaw = std::atan2(R(1,0), R(0,0));
+  return Eigen::Vector3d(roll, pitch, yaw);
+}
+
+inline Eigen::Matrix3d rpyToMatrix(double roll, double pitch, double yaw) {
+  const double cr = std::cos(roll);
+  const double sr = std::sin(roll);
+  const double cp = std::cos(pitch);
+  const double sp = std::sin(pitch);
+  const double cy = std::cos(yaw);
+  const double sy = std::sin(yaw);
+  Eigen::Matrix3d R;
+  R << cy*cp, cy*sp*sr - sy*cr, cy*sp*cr + sy*sr,
+       sy*cp, sy*sp*sr + cy*cr, sy*sp*cr - cy*sr,
+       -sp,   cp*sr,            cp*cr;
+  return R;
+}
+} // namespace
 #include <iostream>
 #include <tsid/contacts/contact-6d.hpp>
 #include <tsid/contacts/contact-point.hpp>
@@ -341,15 +365,14 @@ void KinodynamicsID::solve(
     const double e = (avg_wheel_x - com.x()) - x_rel_des;
 
     // Adjust base reference x and pitch using pendulum coupling
-    const Eigen::Vector3d rpy_cur = pinocchio::rpy::matrixToRpy(base_R);
+    const Eigen::Vector3d rpy_cur = rpyFromMatrix(base_R);
     const double roll_cur = rpy_cur.x();
     const double pitch_cur = rpy_cur.y();
     const double pitch_des = std::atan2(x_rel_des, com_z);
 
     pinocchio::SE3 base_des = base_pose;
     base_des.translation().x() += e;
-    const Eigen::Matrix3d R_des =
-      pinocchio::rpy::rpyToMatrix(roll_cur, pitch_des, yaw);
+    const Eigen::Matrix3d R_des = rpyToMatrix(roll_cur, pitch_des, yaw);
     base_des.rotation() = R_des;
     tsid::math::SE3ToVector(base_des, sampleBase_.pos);
 
