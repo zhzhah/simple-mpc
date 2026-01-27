@@ -81,10 +81,10 @@ dt_mpc = 0.1  # MPC period (s)
 dt_simu = 0.001  # fixed simulation period (s)
 
 w_basepos = [0, 0, 100, 20.0, 3.0, 100]
-w_legpos = [1.1, 1.1, 1.1]
+w_jointpos = [1.1, 1.1, 1.1, 1.1]
 
 w_basevel = [10, 10, 10, 10, 10, 10]
-w_legvel = [1.1, 1.1, 1.1]
+w_jointvel = [1.1, 1.1, 1.1, 1.1]
 model = model_handler.getModel()
 wheel_joints = [
     "FL_wheel_joint",
@@ -158,13 +158,8 @@ w_q = np.zeros(model.nv)
 w_v = np.zeros(model.nv)
 w_q[:6] = w_basepos
 w_v[:6] = w_basevel
-w_q[6:] = w_legpos[0]
-w_v[6:] = w_legvel[0]
-for joint_name in wheel_joints:
-    joint_id = model.getJointId(joint_name)
-    idx_v = model.joints[joint_id].idx_v
-    nv_joint = model.joints[joint_id].nv
-    w_q[idx_v : idx_v + nv_joint] = 0.0
+w_q[6:] = np.resize(np.tile(w_jointpos, 4), w_q[6:].shape[0])
+w_v[6:] = np.resize(np.tile(w_jointvel, 4), w_v[6:].shape[0])
 
 w_x = np.diag(np.concatenate((w_q, w_v)))
 w_linforce = np.array([0.01, 0.01, 0.01])

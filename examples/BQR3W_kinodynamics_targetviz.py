@@ -77,14 +77,16 @@ gravity = np.array([0, 0, -9.81])
 fref = np.zeros(force_size)
 fref[2] = -model_handler.getMass() / nk * gravity[2]
 u0 = np.concatenate((fref, fref, fref, fref, np.zeros(model_handler.getModel().nv - 6)))
-dt_mpc = 0.005  # MPC period (s)
+dt_mpc = 0.01  # MPC period (s)
 dt_simu = 0.001  # fixed simulation period (s)
 
-w_basepos = [10, 10, 100, 20.0, 3.0, 10]
-w_legpos = [1.1, 1.1, 1.1]
+w_basepos = [30, 10, 100, 20.0, 3.0, 30]
+w_jointpos = [1.1, 1.1, 1.1, 1.1]
 
-w_basevel = [10, 10, 10, 10, 10, 10]
-w_legvel = [0.1, 0.1, 0.1]
+w_basevel = [100, 10, 10, 10, 10, 100]
+w_jointvel = [0.1, 0.1, 0.1, 0.1]
+wheel_w_q = 0.0
+wheel_w_v = 0.0
 model = model_handler.getModel()
 wheel_joints = [
     "FL_wheel_joint",
@@ -158,13 +160,8 @@ w_q = np.zeros(model.nv)
 w_v = np.zeros(model.nv)
 w_q[:6] = w_basepos
 w_v[:6] = w_basevel
-w_q[6:] = w_legpos[0]
-w_v[6:] = w_legvel[0]
-for joint_name in wheel_joints:
-    joint_id = model.getJointId(joint_name)
-    idx_v = model.joints[joint_id].idx_v
-    nv_joint = model.joints[joint_id].nv
-    w_q[idx_v : idx_v + nv_joint] = 0.0
+w_q[6:] = np.resize(np.tile(w_jointpos, 4), w_q[6:].shape[0])
+w_v[6:] = np.resize(np.tile(w_jointvel, 4), w_v[6:].shape[0])
 
 w_x = np.diag(np.concatenate((w_q, w_v)))
 w_linforce = np.array([0.01, 0.01, 0.01])
@@ -210,18 +207,18 @@ problem_conf = dict(
     force_cone=False,
     land_cstr=False,
     nonholonomic_rolling=False,
-    enable_lateral_no_slip=True,
+    enable_lateral_no_slip=False,
     lateral_no_slip_min_axis_norm=1e-12,
     lateral_no_slip_min_cross_norm=1e-8,
-    use_vector_glide_cost=True,
-    vector_glide_weight=100.0,
+    use_vector_glide_cost=False,
+    vector_glide_weight=0.0,
     vector_glide_min_omega=1e-6,
     min_wheel_distance_cstr=False,
     min_wheel_distance=1.2 * 2.0 * wheel_radius,
     min_wheel_distance_cost=False,
     w_min_wheel_distance=100.5,
     min_wheel_distance_cost_eps=1e-2,
-    force_z_variance_cost=True,
+    force_z_variance_cost=False,
     w_force_z_variance=10.0,
     joint_limit_soft_cost=False,
     w_joint_limit_soft=2.0,
@@ -252,7 +249,7 @@ mpc_conf = dict(
     support_force=-model_handler.getMass() * gravity[2],
     TOL=1e-4,
     mu_init=1e-8,
-    max_iters=1,
+    max_iters=10,
     num_threads=8,
     swing_apex=0.15,
     T_fly=T_ss,
@@ -323,10 +320,10 @@ kino_ID_settings.ff_wheel_scale = 1.0
 # Disable legacy non-holonomic rolling constraints (kept for compatibility)
 kino_ID_settings.enable_nonholonomic = False
 kino_ID_settings.enable_lateral_no_slip = False
-kino_ID_settings.lateral_no_slip_use_bounds = True
+kino_ID_settings.lateral_no_slip_use_bounds = False
 kino_ID_settings.lateral_no_slip_lower = -3
 kino_ID_settings.lateral_no_slip_upper = 3
-kino_ID_settings.use_vector_glide_cost = True
+kino_ID_settings.use_vector_glide_cost = False
 kino_ID_settings.vector_glide_weight = 1.0
 kino_ID_settings.enable_pendulum_coupling = False
 kino_ID_settings.pendulum_weight = 1.0
@@ -357,6 +354,18 @@ device.changeCamera(1.0, 60, -15, [0.6, -0.2, 0.5])
 # Target pose visualization (ghost robots)
 target_model_path = erd.getModelPath(URDF_SUBPATH)
 p.setAdditionalSearchPath(target_model_path)
+
+# Keyboard camera control (WASD to pan, QE to yaw, RF to pitch, ZX to zoom)
+cam_distance = 1.0
+cam_yaw = 60.0
+cam_pitch = -15.0
+cam_target = np.array([0.6, -0.2, 0.5], dtype=float)
+cam_dist_slider = p.addUserDebugParameter("cam_dist", 0.2, 5.0, cam_distance)
+cam_yaw_slider = p.addUserDebugParameter("cam_yaw", -180.0, 180.0, cam_yaw)
+cam_pitch_slider = p.addUserDebugParameter("cam_pitch", -89.0, 89.0, cam_pitch)
+cam_tx_slider = p.addUserDebugParameter("cam_target_x", -5.0, 5.0, cam_target[0])
+cam_ty_slider = p.addUserDebugParameter("cam_target_y", -5.0, 5.0, cam_target[1])
+cam_tz_slider = p.addUserDebugParameter("cam_target_z", -1.0, 3.0, cam_target[2])
 
 
 def _spawn_ghost(color_rgba):
@@ -394,7 +403,7 @@ def _update_ghost(robot_id, local_inertia_pos, joint_indices, q_ref_full):
     for i, j_idx in enumerate(joint_indices):
         p.resetJointState(robot_id, j_idx, q_ref_full[7 + i])
 
-# go2-style world-frame velocity command (with sliders)
+# body-frame velocity command (with sliders)
 v_cmd = np.zeros(6)
 v_cmd[0] = 0.2
 
@@ -442,6 +451,8 @@ x_measured = None
 q_meas, v_meas = device.measureState()
 mpc.velocity_base = v_cmd
 x_measured = np.concatenate([q_meas, v_meas])
+odom_x = float(q_meas[0])
+odom_y = float(q_meas[1])
 
 device.showQuadrupedFeet(
     mpc.getDataHandler().getFootPose(mpc.getModelHandler().getFootNb("FL_wheel")),
@@ -470,8 +481,8 @@ solve_time = []
 L_measured = []
 
 mpc.velocity_base = v_cmd
-forward_speed_slider = p.addUserDebugParameter("forward_speed_world", -1.0, 1.0, v_cmd[0])
-yaw_rate_slider = p.addUserDebugParameter("yaw_rate_world", -1.0, 1.0, v_cmd[5])
+forward_speed_slider = p.addUserDebugParameter("forward_speed_body", -1.0, 1.0, v_cmd[0])
+yaw_rate_slider = p.addUserDebugParameter("yaw_rate_body", -1.0, 1.0, v_cmd[5])
 # Simulation control: use keyboard keys
 # 'p' toggles pause/resume, 'n' single-steps one outer iteration
 paused = False  # start paused as requested
@@ -505,16 +516,24 @@ axle_dir_base = np.array(
     ]
 )
 geo_solver = GeometryAdaptor(foot_pos_base, axle_dir_base)
+model_for_com = mpc.getModelHandler().getModel()
+data_for_com = pin.Data(model_for_com)
 for step in range(300000):
     v_cmd[0] = p.readUserDebugParameter(forward_speed_slider)
     v_cmd[5] = p.readUserDebugParameter(yaw_rate_slider)
     q_meas, v_meas = device.measureState()
-    mpc.velocity_base = v_cmd
+    base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
+    yaw = np.arctan2(base_R_world[1, 0], base_R_world[0, 0])
+    v_world_cmd = np.zeros(6)
+    v_world_cmd[0] = v_cmd[0] * np.cos(yaw)
+    v_world_cmd[1] = v_cmd[0] * np.sin(yaw)
+    v_world_cmd[5] = v_cmd[5]
+    mpc.velocity_base = v_world_cmd
     wheel_target_vel = v_cmd[0] / wheel_radius
     # Reference trajectory: propagate along the horizon
     horizon = T
     v_ref = np.zeros(6)
-    v_ref[:] = v_cmd
+    v_ref[:] = v_world_cmd
     x0 = float(ref_x)
     y0 = float(ref_y)
     yaw0 = float(ref_yaw)
@@ -540,6 +559,65 @@ for step in range(300000):
     _update_ghost(target_robot_id, target_local_inertia_pos, target_joint_indices, x_ref0[:nq])
     # Keyboard control: 'p' toggle pause, 'n' single-step
     events = p.getKeyboardEvents()
+    moved_cam = False
+    if ord('w') in events and events[ord('w')] & p.KEY_IS_DOWN:
+        cam_target[0] += 0.02
+        moved_cam = True
+    if ord('s') in events and events[ord('s')] & p.KEY_IS_DOWN:
+        cam_target[0] -= 0.02
+        moved_cam = True
+    if ord('a') in events and events[ord('a')] & p.KEY_IS_DOWN:
+        cam_target[1] += 0.02
+        moved_cam = True
+    if ord('d') in events and events[ord('d')] & p.KEY_IS_DOWN:
+        cam_target[1] -= 0.02
+        moved_cam = True
+    if ord('q') in events and events[ord('q')] & p.KEY_IS_DOWN:
+        cam_yaw -= 1.0
+        moved_cam = True
+    if ord('e') in events and events[ord('e')] & p.KEY_IS_DOWN:
+        cam_yaw += 1.0
+        moved_cam = True
+    if ord('r') in events and events[ord('r')] & p.KEY_IS_DOWN:
+        cam_pitch = min(cam_pitch + 1.0, 89.0)
+        moved_cam = True
+    if ord('f') in events and events[ord('f')] & p.KEY_IS_DOWN:
+        cam_pitch = max(cam_pitch - 1.0, -89.0)
+        moved_cam = True
+    if ord('z') in events and events[ord('z')] & p.KEY_IS_DOWN:
+        cam_distance = max(0.2, cam_distance - 0.02)
+        moved_cam = True
+    if ord('x') in events and events[ord('x')] & p.KEY_IS_DOWN:
+        cam_distance = min(5.0, cam_distance + 0.02)
+        moved_cam = True
+    if moved_cam:
+        p.resetDebugVisualizerCamera(
+            cam_distance, cam_yaw, cam_pitch, cam_target.tolist()
+        )
+    cam_dist_new = p.readUserDebugParameter(cam_dist_slider)
+    cam_yaw_new = p.readUserDebugParameter(cam_yaw_slider)
+    cam_pitch_new = p.readUserDebugParameter(cam_pitch_slider)
+    cam_target_new = np.array(
+        [
+            p.readUserDebugParameter(cam_tx_slider),
+            p.readUserDebugParameter(cam_ty_slider),
+            p.readUserDebugParameter(cam_tz_slider),
+        ],
+        dtype=float,
+    )
+    if (
+        abs(cam_dist_new - cam_distance) > 1e-6
+        or abs(cam_yaw_new - cam_yaw) > 1e-6
+        or abs(cam_pitch_new - cam_pitch) > 1e-6
+        or np.linalg.norm(cam_target_new - cam_target) > 1e-6
+    ):
+        cam_distance = cam_dist_new
+        cam_yaw = cam_yaw_new
+        cam_pitch = cam_pitch_new
+        cam_target = cam_target_new
+        p.resetDebugVisualizerCamera(
+            cam_distance, cam_yaw, cam_pitch, cam_target.tolist()
+        )
     if ord('p') in events and events[ord('p')] & p.KEY_WAS_TRIGGERED:
         paused = not paused
         print("[UI] paused =", paused)
@@ -571,8 +649,19 @@ for step in range(300000):
     end = time.time()
     solve_time.append(end - start)
     if len(mpc.xs) > 0:
+        x0 = np.asarray(mpc.xs[0]).copy()
         x_last = np.asarray(mpc.xs[-1]).copy()
-        _update_ghost(terminal_robot_id, terminal_local_inertia_pos, terminal_joint_indices, x_last[:nq])
+        q0 = x0[:nq]
+        v0 = x0[nq : nq + nv]
+        q_last = x_last[:nq]
+        v_last = x_last[nq : nq + nv]
+        com0 = pin.centerOfMass(model_for_com, data_for_com, q0, v0)
+        com_last = pin.centerOfMass(model_for_com, data_for_com, q_last, v_last)
+        dcom = com_last - com0
+        q_ghost = q_meas.copy()
+        q_ghost[:3] = q_meas[:3] + dcom
+        q_ghost[7:] = q_last[7:]
+        _update_ghost(terminal_robot_id, terminal_local_inertia_pos, terminal_joint_indices, q_ghost)
     if step == 0:
         try:
             print("[recording] len(mpc.xs) =", len(mpc.xs))
@@ -687,11 +776,18 @@ for step in range(300000):
 
         q_meas, v_meas = device.measureState()
         base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
-        x_measured = np.concatenate([q_meas, v_meas])
+        v_body = base_R_world.T @ v_meas[:3]
+        v_body[2] = 0.0
+        odom_x += float(v_body[0]) * dt_simu
+        odom_y += float(v_body[1]) * dt_simu
+        q_meas_odom = q_meas.copy()
+        q_meas_odom[0] = odom_x
+        q_meas_odom[1] = odom_y
+        x_measured = np.concatenate([q_meas_odom, v_meas])
 
         # ID input uses MPC-interpolated state/force directly
         kino_ID.setTarget(q_interp, v_interp, acc_interp, contact_states, force_interp)
-        tau_cmd = kino_ID.solve(t, q_meas, v_meas)
+        tau_cmd = kino_ID.solve(t, q_meas_odom, v_meas)
 
         contact_forces = {name: np.zeros(3) for name in wheel_link_names}
         for cp in p.getContactPoints(bodyA=device.robotId):
