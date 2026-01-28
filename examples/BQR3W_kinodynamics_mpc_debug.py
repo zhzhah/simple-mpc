@@ -63,9 +63,9 @@ fref[2] = -model_handler.getMass() / nk * gravity[2]
 dt_mpc = 0.01
 
 w_basepos = [0, 0, 100, 20.0, 0.0, 30]
-w_jointpos = [1.1, 1.1, 1.1, 0.0]
+w_jointpos = [10.1, 10.1, 10.1, 0.0]
 w_basevel = [100, 10, 10, 10, 10, 100]
-w_jointvel = [0.1, 0.1, 0.1, 0.1]
+w_jointvel = [0.1, 0.1, 0.1, 0.0]
 
 model = model_handler.getModel()
 wheel_joints = [
@@ -155,7 +155,7 @@ mpc_conf = dict(
     support_force=-model_handler.getMass() * gravity[2],
     TOL=1e-4,
     mu_init=1e-8,
-    max_iters=5,
+    max_iters=3,
     num_threads=1,
     swing_apex=0.15,
     T_fly=30,

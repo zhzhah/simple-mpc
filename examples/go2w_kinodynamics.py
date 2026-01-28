@@ -47,7 +47,7 @@ if "standing" not in robot_wrapper.model.referenceConfigurations:
     )
 # 手动设置初始位姿：用欧拉角计算四元数
 base_pos = np.array([0.0, 0.0, 0.305])
-base_rpy = np.array([0.0, 0.0, 0.0])  # roll, pitch, yaw
+base_rpy = np.array([0.0, 0.0, -0.0])  # roll, pitch, yaw
 R_base = pin.rpy.rpyToMatrix(base_rpy[0], base_rpy[1], base_rpy[2])
 q_base = pin.Quaternion(R_base)
 q_init = robot_wrapper.model.referenceConfigurations["standing"].copy()
@@ -76,9 +76,9 @@ u0 = np.concatenate((fref, fref, fref, fref, np.zeros(model_handler.getModel().n
 dt_mpc = 0.01
 
 w_basepos = [0, 0, 100, 20.0, 20.0, 0]
-w_legpos = [0.1, 0.1, 0.1]
+w_legpos = [10.1, 10.1, 10.1]
 
-w_basevel = [0, 0, 10, 10, 10, 10]
+w_basevel = [10, 10, 10, 10, 10, 10]
 w_legvel = [1.1, 1.1, 1.1]
 model = model_handler.getModel()
 wheel_joints = [
@@ -173,7 +173,7 @@ problem_conf = dict(
     min_wheel_distance=1.2 * 2.0 * wheel_radius,
     min_wheel_distance_cost=True,
     w_min_wheel_distance=0.05,
-    min_wheel_distance_cost_eps=1e-1,
+    min_wheel_distance_cost_eps=1e-3,
     force_z_variance_cost=True,
     w_force_z_variance=10.0,
     joint_limit_soft_cost=True,
@@ -183,7 +183,7 @@ problem_conf = dict(
     w_soft_contact_vel=20.0,
     w_soft_friction=0.0,
     w_soft_land=0.0,
-    track_width_cstr=False,
+    track_width_cstr=True,
     w_track_width=w_LFRF,
     foot_sum_cstr=False,
     w_foot_sum=w_LFRF,
@@ -278,7 +278,7 @@ kino_ID_settings.enable_lateral_no_slip = False
 kino_ID_settings.lateral_no_slip_use_bounds = True
 kino_ID_settings.lateral_no_slip_lower = -3
 kino_ID_settings.lateral_no_slip_upper = 3
-kino_ID_settings.use_vector_glide_cost = True
+kino_ID_settings.use_vector_glide_cost = False
 kino_ID_settings.vector_glide_weight = 1.0
 kino_ID = KinodynamicsID(model_handler, dt_simu, kino_ID_settings)
 kino_ID.addLateralNoSlipConstraint("FL_wheel")
@@ -301,6 +301,45 @@ device.initializeJoints(
 )
 device.changeCamera(1.0, 60, -15, [0.6, -0.2, 0.5])
 
+# MPC terminal state visualization (ghost robot)
+target_model_path = erd.getModelPath(URDF_SUBPATH)
+p.setAdditionalSearchPath(target_model_path)
+
+
+def _spawn_ghost(color_rgba):
+    ghost_id = p.loadURDF(
+        URDF_SUBPATH, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], useFixedBase=True
+    )
+    local_inertia_pos = np.array(p.getDynamicsInfo(ghost_id, -1)[3])
+    bullet_joint_names = [
+        p.getJointInfo(ghost_id, i)[1].decode()
+        for i in range(p.getNumJoints(ghost_id))
+    ]
+    joint_indices = [
+        bullet_joint_names.index(model_handler.getModel().names[i])
+        for i in range(2, model_handler.getModel().njoints)
+    ]
+    for link_id in range(-1, p.getNumJoints(ghost_id)):
+        p.setCollisionFilterGroupMask(ghost_id, link_id, 0, 0)
+        p.changeVisualShape(ghost_id, link_id, rgbaColor=color_rgba)
+    return ghost_id, local_inertia_pos, joint_indices
+
+
+def _update_ghost(robot_id, local_inertia_pos, joint_indices, q_ref_full):
+    R_ref = pin.Quaternion(q_ref_full[3:7]).toRotationMatrix()
+    offset = R_ref @ local_inertia_pos
+    pos = [
+        q_ref_full[0] + offset[0],
+        q_ref_full[1] + offset[1],
+        q_ref_full[2] + offset[2],
+    ]
+    p.resetBasePositionAndOrientation(robot_id, pos, q_ref_full[3:7])
+    for i, j_idx in enumerate(joint_indices):
+        p.resetJointState(robot_id, j_idx, q_ref_full[7 + i])
+
+
+terminal_robot_id, terminal_local_inertia_pos, terminal_joint_indices = _spawn_ghost([0.95, 0.5, 0.2, 0.35])
+
 # 机身系速度指令（来自可视化滑条）
 v_body_cmd = np.zeros(6)
 v_world_cmd = np.zeros(6)
@@ -317,6 +356,8 @@ x_measured = None
 q_meas, v_meas = device.measureState()
 base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
 yaw = np.arctan2(base_R_world[1, 0], base_R_world[0, 0])
+yaw_accum = yaw
+last_yaw = yaw
 cy = np.cos(yaw)
 sy = np.sin(yaw)
 R_yaw = np.array([[cy, -sy, 0.0], [sy, cy, 0.0], [0.0, 0.0, 1.0]])
@@ -397,14 +438,22 @@ for step in range(300000):
     q_meas, v_meas = device.measureState()
     base_R_world = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
     yaw = np.arctan2(base_R_world[1, 0], base_R_world[0, 0])
+    dyaw = yaw - last_yaw
+    if dyaw > np.pi:
+        dyaw -= 2.0 * np.pi
+    elif dyaw < -np.pi:
+        dyaw += 2.0 * np.pi
+    yaw_accum += dyaw
+    last_yaw = yaw
+    yaw_use = yaw_accum
 
     v_world_cmd[:] = 0.0
-    v_world_cmd[0] = v_body_cmd[0] * np.cos(yaw)
-    v_world_cmd[1] = v_body_cmd[0] * np.sin(yaw)
+    v_world_cmd[0] = v_body_cmd[0] * np.cos(yaw_use)
+    v_world_cmd[1] = v_body_cmd[0] * np.sin(yaw_use)
     v_world_cmd[5] = v_body_cmd[5]
     mpc.velocity_base = v_world_cmd
     print("base q", q_meas[:7])
-    print("yaw(deg)", yaw * 180.0 / np.pi)
+    print("yaw(deg)", yaw_use * 180.0 / np.pi)
     print("cmd body", v_body_cmd)
     print("cmd yaw-only world", v_world_cmd)
     wheel_target_vel = v_body_cmd[0] / wheel_radius
@@ -440,6 +489,12 @@ for step in range(300000):
     mpc.iterate(x_measured)
     end = time.time()
     solve_time.append(end - start)
+
+    if len(mpc.xs) > 0:
+        q_last = np.asarray(mpc.xs[-1][:nq]).copy()
+        _update_ghost(
+            terminal_robot_id, terminal_local_inertia_pos, terminal_joint_indices, q_last
+        )
 
     force_FL.append(mpc.us[0][:3])
     force_FR.append(mpc.us[0][3:6])
