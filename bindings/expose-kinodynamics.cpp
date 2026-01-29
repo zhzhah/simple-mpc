@@ -59,6 +59,12 @@ namespace simple_mpc::python
       conf.foot_height_cstr = bp::extract<bool>(settings["foot_height_cstr"]);
     if (settings.has_key("foot_height"))
       conf.foot_height = bp::extract<double>(settings["foot_height"]);
+    if (settings.has_key("wheel_axle_height_cstr"))
+      conf.wheel_axle_height_cstr = bp::extract<bool>(settings["wheel_axle_height_cstr"]);
+    if (settings.has_key("wheel_axle_height_min"))
+      conf.wheel_axle_height_min = bp::extract<double>(settings["wheel_axle_height_min"]);
+    if (settings.has_key("wheel_axle_height_max"))
+      conf.wheel_axle_height_max = bp::extract<double>(settings["wheel_axle_height_max"]);
 
     return new KinodynamicsOCP(conf, model_handler);
   }
@@ -111,6 +117,9 @@ namespace simple_mpc::python
     settings["foot_sum_z_offset"] = conf.foot_sum_z_offset;
     settings["foot_height_cstr"] = conf.foot_height_cstr;
     settings["foot_height"] = conf.foot_height;
+    settings["wheel_axle_height_cstr"] = conf.wheel_axle_height_cstr;
+    settings["wheel_axle_height_min"] = conf.wheel_axle_height_min;
+    settings["wheel_axle_height_max"] = conf.wheel_axle_height_max;
 
     return settings;
   }

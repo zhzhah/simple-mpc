@@ -76,6 +76,9 @@ namespace simple_mpc
     double foot_sum_z_offset;
     bool foot_height_cstr = false;
     double foot_height = 0.0;
+    bool wheel_axle_height_cstr = false;
+    double wheel_axle_height_min = 0.0;
+    double wheel_axle_height_max = 0.0;
   };
 
   class KinodynamicsOCP : public OCPHandler

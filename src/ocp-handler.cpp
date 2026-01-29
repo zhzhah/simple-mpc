@@ -69,6 +69,7 @@ namespace simple_mpc
     return qc->getTarget();
   }
 
+
   CostStack * OCPHandler::getCostStack(std::size_t t)
   {
     if (t >= getSize())

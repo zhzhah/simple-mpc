@@ -15,6 +15,7 @@
 #include "simple-mpc/track-width.hpp"
 #include "simple-mpc/foot-sum.hpp"
 #include "simple-mpc/foot-coplanar.hpp"
+#include "simple-mpc/wheel-axle-height.hpp"
 #include "simple-mpc/lateral-no-slip.hpp"
 #include "simple-mpc/vector-glide.hpp"
 #include "simple-mpc/wheel-distance.hpp"
@@ -309,6 +310,21 @@ namespace simple_mpc
       }
       FootCoplanarResidual coplanar_residual(space.ndx(), nu_, model_handler_.getModel(), frame_ids);
       stm.addConstraint(coplanar_residual, EqualityConstraint());
+    }
+
+    if (settings_.wheel_axle_height_cstr && model_handler_.getFeetNb() >= 4)
+    {
+      std::array<pinocchio::FrameIndex, 4> frame_ids;
+      for (size_t i = 0; i < 4; i++)
+      {
+        frame_ids[i] = model_handler_.getFootFrameId(i);
+      }
+      WheelAxleHeightResidual axle_height_residual(space.ndx(), nu_, model_handler_.getModel(), frame_ids);
+      Eigen::VectorXd lower(4);
+      Eigen::VectorXd upper(4);
+      lower.setConstant(settings_.wheel_axle_height_min);
+      upper.setConstant(settings_.wheel_axle_height_max);
+      stm.addConstraint(axle_height_residual, BoxConstraint(lower, upper));
     }
 
     if (settings_.kinematics_limits)

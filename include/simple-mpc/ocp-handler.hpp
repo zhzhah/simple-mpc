@@ -110,6 +110,7 @@ namespace simple_mpc
     // Setter and getter for state and control reference
     void setReferenceControl(const std::size_t t, const ConstVectorRef & u_ref);
     ConstVectorRef getReferenceControl(const std::size_t t);
+    void setTerminalReferenceState(const ConstVectorRef & x_ref);
 
     // Getter for various objects and quantities
     CostStack * getCostStack(std::size_t t);
@@ -162,5 +163,16 @@ namespace simple_mpc
     // Vector reference for control cost
     Eigen::VectorXd control_ref_;
   };
+
+  inline void OCPHandler::setTerminalReferenceState(const ConstVectorRef & x_ref)
+  {
+    CostStack * cs = getTerminalCostStack();
+    QuadraticStateCost * qc = cs->getComponent<QuadraticStateCost>("state_cost");
+    if (x_ref.size() != qc->getTarget().size())
+    {
+      throw std::runtime_error("terminal reference state size mismatch");
+    }
+    qc->setTarget(x_ref);
+  }
 
 } // namespace simple_mpc
