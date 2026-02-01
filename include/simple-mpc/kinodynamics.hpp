@@ -32,6 +32,8 @@ namespace simple_mpc
     Eigen::VectorXd w_frame;   // End effector placement (per-axis weights)
     Eigen::MatrixXd w_cent;    // Centroidal momentum
     Eigen::MatrixXd w_centder; // Derivative of centroidal momentum
+    Eigen::MatrixXd w_x_terminal;    // Terminal state
+    Eigen::MatrixXd w_cent_terminal; // Terminal centroidal momentum
 
     // Kinematics limits
     Eigen::VectorXd qmin;

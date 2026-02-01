@@ -15,6 +15,14 @@ namespace simple_mpc::python
     conf.w_cent = bp::extract<Eigen::MatrixXd>(settings["w_cent"]);
     conf.w_centder = bp::extract<Eigen::MatrixXd>(settings["w_centder"]);
     conf.w_frame = bp::extract<Eigen::VectorXd>(settings["w_frame"]);
+    if (settings.has_key("w_x_terminal"))
+      conf.w_x_terminal = bp::extract<Eigen::MatrixXd>(settings["w_x_terminal"]);
+    else
+      conf.w_x_terminal = conf.w_x;
+    if (settings.has_key("w_cent_terminal"))
+      conf.w_cent_terminal = bp::extract<Eigen::MatrixXd>(settings["w_cent_terminal"]);
+    else
+      conf.w_cent_terminal = conf.w_cent * 10.0;
 
     conf.gravity = bp::extract<Eigen::Vector3d>(settings["gravity"]);
     conf.force_size = bp::extract<int>(settings["force_size"]);
@@ -79,6 +87,8 @@ namespace simple_mpc::python
     settings["w_cent"] = conf.w_cent;
     settings["w_centder"] = conf.w_centder;
     settings["w_frame"] = conf.w_frame;
+    settings["w_x_terminal"] = conf.w_x_terminal;
+    settings["w_cent_terminal"] = conf.w_cent_terminal;
     settings["gravity"] = conf.gravity;
     settings["force_size"] = conf.force_size;
     settings["qmin"] = conf.qmin;

@@ -681,8 +681,11 @@ namespace simple_mpc
       CentroidalMomentumResidual(ter_space.ndx(), nu_, model_handler_.getModel(), Eigen::VectorXd::Zero(6));
 
     term_cost.addCost(
-      "state_cost", QuadraticStateCost(ter_space, nu_, model_handler_.getReferenceState(), settings_.w_x));
-    term_cost.addCost("centroidal_cost", QuadraticResidualCost(ter_space, cent_mom, settings_.w_cent * 10));
+      "state_cost",
+      QuadraticStateCost(ter_space, nu_, model_handler_.getReferenceState(), settings_.w_x_terminal));
+    term_cost.addCost(
+      "centroidal_cost",
+      QuadraticResidualCost(ter_space, cent_mom, settings_.w_cent_terminal));
 
     return term_cost;
   }

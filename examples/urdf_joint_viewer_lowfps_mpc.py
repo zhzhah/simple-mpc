@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 import time
 import csv
+import re
 import numpy as np
 import pandas as pd
 
@@ -37,13 +38,19 @@ SHOW_TARGET_GHOST = False
 SHOW_VELOCITY_ARROWS = True
 SHOW_TARGET_BALL = True
 SHOW_MPC_GHOSTS = True
+SHOW_MPC_REF_GHOST = True
 SHOW_MPC_TRAJECTORY = False
+SHOW_FOOT_TRAJECTORY = False
+SHOW_COM_TRAJECTORY = False
+SHOW_MPC_STATE_LINE = True
+SHOW_MPC_FOOT_LINES = True
 PRINT_MPC_DEBUG = True
 SAVE_MPC_DEBUG = True
 MPC_DEBUG_CSV = Path("/home/yzc/MPCtest/simple-mpc/mpc_debug.csv")
 # ----------------------------------------------------
 
 BASE_POS_OFFSET = (0.0, 0.0, 0.25)
+MAX_TRAJ_POINTS = 2000
 
 # Arrow style
 VEL_SCALE = 0.5
@@ -76,12 +83,19 @@ def parse_args() -> argparse.Namespace:
         default=100.0,
         help="Data frame rate for horizon indexing (default: 100)",
     )
+    parser.add_argument("--video", action="store_true", help="Enable video output")
     parser.add_argument("--video-out", type=str, default="", help="Output video path (mp4)")
     parser.add_argument("--video-fps", type=float, default=30.0, help="Video FPS (default: 30)")
     parser.add_argument("--video-width", type=int, default=1280, help="Video width (default: 1280)")
     parser.add_argument("--video-height", type=int, default=720, help="Video height (default: 720)")
     parser.add_argument("--video-start", type=int, default=0, help="Start frame index (default: 0)")
     parser.add_argument("--video-end", type=int, default=-1, help="End frame index, inclusive (default: -1 = last)")
+    parser.add_argument(
+        "--video-range",
+        type=str,
+        default="",
+        help="Video range as percentage (e.g. 30%-50%). Overrides video-start/end.",
+    )
     return parser.parse_args()
 
 
@@ -128,10 +142,16 @@ def build_mpc():
     force_size = 3
 
     dt_mpc = 0.01
-    w_basepos = [10, 10, 100, 20.0, 20.0, 10]
+    w_basepos = [0, 0, 0, 0.0, 0.0, 0]
     w_jointpos = [10.1, 10.1, 10.1, 0.0]
-    w_basevel = [10, 10, 10, 10, 10, 10]
-    w_jointvel = [2.1, 2.1, 2.1, 0.0]
+    w_basevel = [20, 20, 10, 10, 10, 20]
+    w_jointvel = [0.1, 0.1, 0.1, 0.0]
+
+    # Terminal weights (separate from stage weights)
+    w_basepos_T = [10000, 10000, 10000, 10000.0, 10000.0, 100000]
+    w_jointpos_T = [1000.1, 1000.1, 1000.1, 0.0]
+    w_basevel_T = [10, 10, 10, 10, 10, 10]
+    w_jointvel_T = [0.1, 0.1, 0.1, 0.0]
 
     wheel_joints = [
         "FL_wheel_joint",
@@ -156,6 +176,13 @@ def build_mpc():
     w_v[6:] = np.resize(np.tile(w_jointvel, 4), w_v[6:].shape[0])
 
     w_x = np.diag(np.concatenate((w_q, w_v)))
+    w_q_T = np.zeros(model.nv)
+    w_v_T = np.zeros(model.nv)
+    w_q_T[:6] = w_basepos_T
+    w_v_T[:6] = w_basevel_T
+    w_q_T[6:] = np.resize(np.tile(w_jointpos_T, 4), w_q_T[6:].shape[0])
+    w_v_T[6:] = np.resize(np.tile(w_jointvel_T, 4), w_v_T[6:].shape[0])
+    w_x_T = np.diag(np.concatenate((w_q_T, w_v_T)))
     w_linforce = np.array([0.01, 0.01, 0.01])
     w_u_joints = np.ones(model.nv - 6) * 1e-5
     w_u = np.concatenate((w_linforce, w_linforce, w_linforce, w_linforce, w_u_joints))
@@ -183,6 +210,8 @@ def build_mpc():
         w_u=w_u,
         w_cent=w_cent,
         w_centder=w_centder,
+        w_x_terminal=w_x_T,
+        w_cent_terminal=w_cent * 1.0,
         gravity=gravity,
         force_size=3,
         w_frame=np.array([0.0, 0.0, 0.0]),
@@ -198,8 +227,10 @@ def build_mpc():
         enable_lateral_no_slip=True,
         lateral_no_slip_min_axis_norm=1e-12,
         lateral_no_slip_min_cross_norm=1e-8,
-        use_vector_glide_cost=False,
-        vector_glide_weight=100.0,
+        use_vector_glide_cost=True,
+        vector_glide_weight=1000.0,
+        vector_glide_weight_base=1000.0,
+        vector_glide_disable_on_twist=True,
         vector_glide_min_omega=1e-6,
         min_wheel_distance_cstr=False,
         min_wheel_distance=1.2 * 2.0 * wheel_radius,
@@ -281,6 +312,58 @@ def update_ghost(robot_id, joint_indices, q_ref_full):
 def quat_from_rpy(roll: float, pitch: float, yaw: float) -> np.ndarray:
     R = pin.rpy.rpyToMatrix(roll, pitch, yaw)
     return pin.Quaternion(R).coeffs()
+
+
+def clamp_mpc_pitch(xs, nq, pitch_min, pitch_max):
+    for x in xs:
+        q = np.asarray(x[:nq]).copy()
+        R = pin.Quaternion(q[3:7]).toRotationMatrix()
+        rpy = pin.rpy.matrixToRpy(R)
+        pitch_clamped = float(np.clip(rpy[1], pitch_min, pitch_max))
+        if abs(pitch_clamped - rpy[1]) > 1e-12:
+            R2 = pin.rpy.rpyToMatrix(float(rpy[0]), pitch_clamped, float(rpy[2]))
+            q[3:7] = pin.Quaternion(R2).coeffs()
+            x[:nq] = q
+
+
+def update_vector_glide_weight(problem_conf, model_handler, x_measured, yaw_rate, wheel_link_names):
+    if not problem_conf.get("vector_glide_disable_on_twist", False):
+        return
+    if abs(yaw_rate) <= 0.0:
+        problem_conf["vector_glide_weight"] = problem_conf.get("vector_glide_weight_base", 0.0)
+        return
+    model = model_handler.getModel()
+    nq = model.nq
+    data = pin.Data(model)
+    q0 = np.asarray(x_measured[:nq]).copy()
+    v0 = np.asarray(x_measured[nq:]).copy()
+    pin.forwardKinematics(model, data, q0, v0)
+    pin.updateFramePlacements(model, data)
+    base_fid = model_handler.getBaseFrameId()
+    base_pose = data.oMf[base_fid]
+    Rb = base_pose.rotation
+    pb = base_pose.translation
+
+    def foot_pos(name):
+        fid = model_handler.getFootFrameId(model_handler.getFootNb(name))
+        pw = data.oMf[fid].translation.copy()
+        return Rb.T @ (pw - pb)
+
+    fl = foot_pos("FL_wheel")
+    fr = foot_pos("FR_wheel")
+    rl = foot_pos("RL_wheel")
+    rr = foot_pos("RR_wheel")
+
+    front_avg = 0.5 * (fl + fr)
+    rear_avg = 0.5 * (rl + rr)
+    front_left_of_rear = front_avg[1] < rear_avg[1]
+    front_right_of_rear = front_avg[1] > rear_avg[1]
+
+    disable = (yaw_rate > 0.0 and front_left_of_rear) or (yaw_rate < 0.0 and front_right_of_rear)
+    if disable:
+        problem_conf["vector_glide_weight"] = 0.0
+    else:
+        problem_conf["vector_glide_weight"] = problem_conf.get("vector_glide_weight_base", 0.0)
 
 
 def capture_frame(width: int, height: int) -> np.ndarray:
@@ -694,6 +777,12 @@ def debug_mpc_horizon(mpc, model_handler, problem_conf, wheel_link_names, base_h
 
         print(f"[MPC] t={t}")
         print(f"  state_cost={state_cost:.6g} control_cost={control_cost:.6g} foot_cost={foot_cost:.6g}")
+        if t == len(mpc.xs) - 2:
+            try:
+                x_term_ref = np.asarray(mpc.ocp_handler.getTerminalReferenceState())
+                print(f"  terminal q_ref={x_term_ref[:nq]}")
+            except Exception:
+                print(f"  terminal q_ref={q_ref}")
         print(
             "  state_cost parts: base_pos={:.3g} base_ori={:.3g} joint_pos={:.3g} base_linvel={:.3g} base_angvel={:.3g} joint_vel={:.3g}".format(
                 state_cost_base_pos,
@@ -800,6 +889,10 @@ def main() -> None:
     yaw = df["yaw"].to_numpy()
     roll = df["CoMAngle_0"].to_numpy() if "CoMAngle_0" in df.columns else np.zeros_like(yaw)
     pitch = df["CoMAngle_1"].to_numpy() if "CoMAngle_1" in df.columns else np.zeros_like(yaw)
+    pitch_mean = float(np.mean(pitch)) if pitch.size else 0.0
+    pitch_limit = 5.0 * np.pi / 180.0
+    pitch_min = pitch_mean - pitch_limit
+    pitch_max = pitch_mean + pitch_limit
 
     vel_world = df[["vel_world_x", "vel_world_y"]].to_numpy() if SHOW_VELOCITY_ARROWS else None
     vel_d_world = df[["vel_d_world_x", "vel_d_world_y"]].to_numpy() if SHOW_VELOCITY_ARROWS else None
@@ -824,7 +917,7 @@ def main() -> None:
 
     # Floor + grid
     floor_half_extents = [50, 50, 0.0005]
-    floor_vis = p.createVisualShape(p.GEOM_BOX, halfExtents=floor_half_extents, rgbaColor=[0.01, 0.01, 0.01, 1])
+    floor_vis = p.createVisualShape(p.GEOM_BOX, halfExtents=floor_half_extents, rgbaColor=[0.2, 0.2, 0.2, 1])
     floor_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=floor_half_extents)
     p.createMultiBody(0, floor_col, floor_vis, [0.0, 0.0, 0.005])
     grid_size = 100
@@ -835,21 +928,24 @@ def main() -> None:
         p.addUserDebugLine(
             [-grid_size * grid_step, a, grid_z],
             [grid_size * grid_step, a, grid_z],
-            lineColorRGB=[0.2, 0.2, 0.2],
+            lineColorRGB=[0.35, 0.35, 0.35],
             lineWidth=1,
         )
         p.addUserDebugLine(
             [a, -grid_size * grid_step, grid_z],
             [a, grid_size * grid_step, grid_z],
-            lineColorRGB=[0.2, 0.2, 0.2],
+            lineColorRGB=[0.35, 0.35, 0.35],
             lineWidth=1,
         )
 
     # Screen
     screen_half_extents = [0.0005, 32.5, 32.5]
-    screen_vis = p.createVisualShape(p.GEOM_BOX, halfExtents=screen_half_extents, rgbaColor=[0.01, 0.01, 0.01, 1])
+    screen_vis = p.createVisualShape(p.GEOM_BOX, halfExtents=screen_half_extents, rgbaColor=[0.25, 0.25, 0.25, 1])
     screen_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=screen_half_extents)
     p.createMultiBody(0, screen_col, screen_vis, [-1.0, 0.0, 1.0])
+    # Screen on right side (3m to the right of spawn), facing the robot
+    right_screen_quat = p.getQuaternionFromEuler([0.0, 0.0, -np.pi / 2.0])
+    p.createMultiBody(0, screen_col, screen_vis, [0.0, -3.0, 1.0], right_screen_quat)
 
     p.configureDebugVisualizer(p.COV_ENABLE_RGB_BUFFER_PREVIEW, 0)
     p.configureDebugVisualizer(p.COV_ENABLE_DEPTH_BUFFER_PREVIEW, 0)
@@ -918,6 +1014,29 @@ def main() -> None:
     nv = model.nv
     model_names = list(model.names)
     wheel_link_names = ["FL_wheel", "FR_wheel", "RL_wheel", "RR_wheel"]
+    # Foot trajectory z reference (world)
+    q_init = model_handler.getReferenceState()[:nq].copy()
+    q_init[0] = world_xyz[0, 0]
+    q_init[1] = world_xyz[0, 1]
+    q_init[2] = world_xyz[0, 2]
+    q_init[3:7] = quat_from_rpy(float(roll[0]), float(pitch[0]), float(yaw[0]))
+    for joint_name, qv in zip(joint_order, q[0]):
+        joint_id = model.getJointId(joint_name)
+        idx_q = model.joints[joint_id].idx_q
+        q_init[idx_q : idx_q + model.joints[joint_id].nq] = qv
+    data_init = pin.Data(model)
+    pin.forwardKinematics(model, data_init, q_init, np.zeros(nv))
+    pin.updateFramePlacements(model, data_init)
+    foot_axis_z_world = {}
+    for name in wheel_link_names:
+        fid = model_handler.getFootFrameId(model_handler.getFootNb(name))
+        foot_axis_z_world[name] = float(data_init.oMf[fid].translation[2])
+    foot_traj_lines = {name: [] for name in wheel_link_names}
+    foot_traj_prev = {name: None for name in wheel_link_names}
+    com_traj_lines = []
+    com_traj_prev = None
+    mpc_state_line_ids = []
+    mpc_foot_line_ids = {name: [] for name in wheel_link_names}
 
     debug_csv_file = None
     debug_csv_writer = None
@@ -995,6 +1114,13 @@ def main() -> None:
             FIXED_URDF, [0.9, 0.8, 0.2, MPC_GHOST_ALPHA], model_names
         )
         mpc_terminal_ghost = (ghost_id, ghost_joints)
+    # Single ghost for MPC terminal reference
+    mpc_ref_ghost = None
+    if SHOW_MPC_REF_GHOST:
+        ghost_id, ghost_joints = spawn_ghost(
+            FIXED_URDF, [0.2, 0.9, 0.2, MPC_GHOST_ALPHA], model_names
+        )
+        mpc_ref_ghost = (ghost_id, ghost_joints)
 
     mpc_line_ids = []
 
@@ -1022,10 +1148,11 @@ def main() -> None:
 
         q_meas_local = model_handler.getReferenceState()[:nq].copy()
         # Single-step MPC: anchor base at origin, keep measured orientation/joints
+        pitch_use = float(np.clip(pitch[frame_idx], pitch_min, pitch_max))
         q_meas_local[0] = 0.0
         q_meas_local[1] = 0.0
         q_meas_local[2] = base_xyz_local[2]
-        q_meas_local[3:7] = quat_from_rpy(float(roll[frame_idx]), float(pitch[frame_idx]), float(yaw[frame_idx]))
+        q_meas_local[3:7] = quat_from_rpy(float(roll[frame_idx]), pitch_use, float(yaw[frame_idx]))
         for joint_name, qv in zip(joint_order, q[frame_idx]):
             joint_id = model.getJointId(joint_name)
             idx_q = model.joints[joint_id].idx_q
@@ -1056,7 +1183,7 @@ def main() -> None:
         q_term_local[1] = ball_xy_local[1] - base_xyz_local[1]
         q_term_local[2] = base_xyz_local[2]
         yaw_term_local = yaw[frame_idx] + wz_cmd_local * TARGET_INTEGRATION_T
-        q_term_local[3:7] = quat_from_rpy(float(roll[frame_idx]), float(pitch[frame_idx]), float(yaw_term_local))
+        q_term_local[3:7] = quat_from_rpy(float(roll[frame_idx]), pitch_use, float(yaw_term_local))
         for joint_name, qv in zip(joint_order, q[tgt_idx_local]):
             joint_id = model.getJointId(joint_name)
             idx_q = model.joints[joint_id].idx_q
@@ -1066,6 +1193,7 @@ def main() -> None:
 
     def process_frame(frame: int):
         nonlocal vel_line_id, vel_d_line_id, ang_line_id, ang_d_line_id, line_ids, mpc_line_ids
+        nonlocal foot_traj_lines, foot_traj_prev, com_traj_lines, com_traj_prev, mpc_state_line_ids, mpc_foot_line_ids
         base_xyz = world_xyz[frame]
         base_pos = np.array([base_xyz[0], base_xyz[1], base_xyz[2]]) + np.array(BASE_POS_OFFSET)
         quat = quat_from_rpy(float(roll[frame]), float(pitch[frame]), float(yaw[frame]))
@@ -1122,6 +1250,10 @@ def main() -> None:
                 if ang_d_head_id != -1:
                     p.resetBasePositionAndOrientation(ang_d_head_id, end, [0, 0, 0, 1])
 
+        # Adapt vector glide weight based on twist direction vs. foot alignment
+        if problem_conf.get("use_vector_glide_cost", False):
+            update_vector_glide_weight(problem_conf, model_handler, x_measured, v_world_cmd[5], wheel_link_names)
+
         # Fresh MPC instance each frame to reset initial guess
         mpc = create_mpc_instance()
         # reference velocity command (world)
@@ -1135,7 +1267,113 @@ def main() -> None:
 
         reset_mpc_initial_guess(mpc, x_measured)
         mpc.iterate(x_measured)
+        clamp_mpc_pitch(mpc.xs, nq, pitch_min, pitch_max)
 
+        # Foot + COM trajectories (world frame)
+        if SHOW_FOOT_TRAJECTORY or SHOW_COM_TRAJECTORY:
+            data_traj = pin.Data(model)
+            pin.forwardKinematics(model, data_traj, x_measured[:nq], x_measured[nq:])
+            pin.updateFramePlacements(model, data_traj)
+            if SHOW_FOOT_TRAJECTORY:
+                foot_colors = {
+                    "FL_wheel": [0.9, 0.4, 0.4],
+                    "FR_wheel": [0.4, 0.9, 0.4],
+                    "RL_wheel": [0.4, 0.4, 0.9],
+                    "RR_wheel": [0.9, 0.9, 0.4],
+                }
+                for name in wheel_link_names:
+                    fid = model_handler.getFootFrameId(model_handler.getFootNb(name))
+                    p_now = data_traj.oMf[fid].translation
+                    prev = foot_traj_prev[name]
+                    if prev is not None:
+                        lid = p.addUserDebugLine(
+                            [prev[0], prev[1], prev[2]],
+                            [p_now[0], p_now[1], p_now[2]],
+                            lineColorRGB=foot_colors[name],
+                            lineWidth=2,
+                        )
+                        foot_traj_lines[name].append(lid)
+                        if len(foot_traj_lines[name]) > MAX_TRAJ_POINTS:
+                            p.removeUserDebugItem(foot_traj_lines[name].pop(0))
+                    foot_traj_prev[name] = p_now.copy()
+            if SHOW_COM_TRAJECTORY:
+                com = pin.centerOfMass(model, data_traj, x_measured[:nq], x_measured[nq:])
+                if com_traj_prev is not None:
+                    lid = p.addUserDebugLine(
+                        [com_traj_prev[0], com_traj_prev[1], com_traj_prev[2]],
+                        [com[0], com[1], com[2]],
+                        lineColorRGB=[0.1, 0.8, 0.8],
+                        lineWidth=2,
+                    )
+                    com_traj_lines.append(lid)
+                    if len(com_traj_lines) > MAX_TRAJ_POINTS:
+                        p.removeUserDebugItem(com_traj_lines.pop(0))
+                com_traj_prev = com.copy()
+
+        # MPC state line: from current state to terminal ghost (sample ~10 points)
+        if SHOW_MPC_STATE_LINE and mpc.xs:
+            for lid in mpc_state_line_ids:
+                p.removeUserDebugItem(lid)
+            mpc_state_line_ids = []
+            samples = 10
+            idxs = np.linspace(0, len(mpc.xs) - 1, samples, dtype=int).tolist()
+            pts = []
+            for idx in idxs:
+                xs = mpc.xs[int(idx)]
+                pts.append([
+                    xs[0] + base_xyz[0] + BASE_POS_OFFSET[0],
+                    xs[1] + base_xyz[1] + BASE_POS_OFFSET[1],
+                    xs[2] + BASE_POS_OFFSET[2],
+                ])
+            for i in range(1, len(pts)):
+                mpc_state_line_ids.append(
+                    p.addUserDebugLine(
+                        pts[i - 1],
+                        pts[i],
+                        lineColorRGB=[0.95, 0.8, 0.2],
+                        lineWidth=3,
+                    )
+                )
+
+        # MPC foot trajectories: sample ~10 points along horizon
+        if SHOW_MPC_FOOT_LINES and mpc.xs:
+            foot_colors = {
+                "FL_wheel": [0.9, 0.4, 0.4],
+                "FR_wheel": [0.4, 0.9, 0.4],
+                "RL_wheel": [0.4, 0.4, 0.9],
+                "RR_wheel": [0.9, 0.9, 0.4],
+            }
+            for name in wheel_link_names:
+                for lid in mpc_foot_line_ids[name]:
+                    p.removeUserDebugItem(lid)
+                mpc_foot_line_ids[name] = []
+            samples = 10
+            idxs = np.linspace(0, len(mpc.xs) - 1, samples, dtype=int).tolist()
+            data_k = pin.Data(model)
+            prev_pts = {name: None for name in wheel_link_names}
+            for idx in idxs:
+                xs = np.asarray(mpc.xs[int(idx)])
+                q_world = xs[:nq].copy()
+                q_world[0] += base_xyz[0]
+                q_world[1] += base_xyz[1]
+                q_world[2] += base_xyz[2]
+                pin.forwardKinematics(model, data_k, q_world, xs[nq:])
+                pin.updateFramePlacements(model, data_k)
+                for name in wheel_link_names:
+                    fid = model_handler.getFootFrameId(model_handler.getFootNb(name))
+                    pw = data_k.oMf[fid].translation
+                    z_fixed = foot_axis_z_world.get(name, float(pw[2]))
+                    p_vis = [pw[0] + BASE_POS_OFFSET[0], pw[1] + BASE_POS_OFFSET[1], z_fixed + BASE_POS_OFFSET[2]]
+                    prev = prev_pts[name]
+                    if prev is not None:
+                        lid = p.addUserDebugLine(
+                            prev,
+                            p_vis,
+                            lineColorRGB=foot_colors[name],
+                            lineWidth=2,
+                        )
+                        mpc_foot_line_ids[name].append(lid)
+                    prev_pts[name] = p_vis
         rows = None
         if PRINT_MPC_DEBUG:
             print("=" * 80)
@@ -1201,6 +1439,19 @@ def main() -> None:
             q_pred_vis[1] += base_xyz[1] + BASE_POS_OFFSET[1]
             q_pred_vis[2] = q_pred[2] + BASE_POS_OFFSET[2]
             update_ghost(ghost_id, ghost_joints, q_pred_vis)
+        if SHOW_MPC_REF_GHOST and mpc_ref_ghost is not None:
+            ghost_id, ghost_joints = mpc_ref_ghost
+            try:
+                x_term_ref = np.asarray(mpc.ocp_handler.getTerminalReferenceState())
+                q_ref = x_term_ref[:nq].copy()
+            except Exception:
+                q_ref = q_term.copy()
+            q_ref_vis = q_ref.copy()
+            # Display terminal reference offset to current robot position
+            q_ref_vis[0] += base_xyz[0] + BASE_POS_OFFSET[0]
+            q_ref_vis[1] += base_xyz[1] + BASE_POS_OFFSET[1]
+            q_ref_vis[2] = q_ref[2] + BASE_POS_OFFSET[2]
+            update_ghost(ghost_id, ghost_joints, q_ref_vis)
 
         if SHOW_MPC_TRAJECTORY and mpc.xs:
             for lid in mpc_line_ids:
@@ -1225,17 +1476,38 @@ def main() -> None:
             cam_dist = p.readUserDebugParameter(cam_dist_slider)
             p.resetDebugVisualizerCamera(cam_dist, cam_yaw, cam_pitch, base_pos.tolist())
 
-    if args.video_out:
+    video_out = args.video_out
+    if args.video and not video_out:
+        video_out = "out.mp4"
+
+    if video_out:
         try:
             import imageio.v2 as imageio
         except Exception as exc:
             raise SystemExit("imageio is required for video output. Install with: pip install imageio imageio-ffmpeg") from exc
+        start_frame = max(args.video_start, 0)
         end_frame = args.video_end if args.video_end >= 0 else num_frames - 1
         end_frame = min(end_frame, num_frames - 1)
-        start_frame = max(args.video_start, 0)
+        if args.video_range:
+            try:
+                range_str = args.video_range.strip()
+                nums = re.findall(r"[0-9]*\.?[0-9]+", range_str)
+                if len(nums) != 2:
+                    raise ValueError
+                start_pct = float(nums[0])
+                end_pct = float(nums[1])
+                if not (0.0 <= start_pct <= 100.0 and 0.0 <= end_pct <= 100.0):
+                    raise ValueError
+                if end_pct < start_pct:
+                    start_pct, end_pct = end_pct, start_pct
+                total = max(num_frames - 1, 0)
+                start_frame = int(round(total * (start_pct / 100.0)))
+                end_frame = int(round(total * (end_pct / 100.0)))
+            except Exception:
+                raise SystemExit("Invalid --video-range. Use format like 30%-50%")
         step = max(1, int(round(args.data_hz / max(args.video_fps, 1e-6))))
         frames = list(range(start_frame, end_frame + 1, step))
-        writer = imageio.get_writer(args.video_out, fps=args.video_fps)
+        writer = imageio.get_writer(video_out, fps=args.video_fps)
         for frame in frames:
             process_frame(frame)
             rgb = capture_frame(args.video_width, args.video_height)

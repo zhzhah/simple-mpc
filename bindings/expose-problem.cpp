@@ -80,6 +80,7 @@ namespace simple_mpc
         .def("setReferenceControl", &OCPHandler::setReferenceControl, ("self"_a, "t", "u_ref"))
         .def("getReferenceControl", &OCPHandler::getReferenceControl, ("self"_a, "t"))
         .def("setTerminalReferenceState", &OCPHandler::setTerminalReferenceState, ("self"_a, "x_ref"))
+        .def("getTerminalReferenceState", &OCPHandler::getTerminalReferenceState, "self"_a)
         .def("getProblem", +[](OCPHandler & ocp) { return boost::ref(ocp.getProblem()); }, "self"_a);
 
       exposeContainers();
