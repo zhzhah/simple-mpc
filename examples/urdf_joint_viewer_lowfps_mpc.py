@@ -35,15 +35,16 @@ LOW_FPS_CSV = Path("/home/yzc/MPCtest/traj/processed_low.csv")
 # ---- Visualization toggles (all visual helpers) ----
 SHOW_TRAJECTORY = False
 SHOW_TARGET_GHOST = False
-SHOW_VELOCITY_ARROWS = True
-SHOW_TARGET_BALL = True
+SHOW_VELOCITY_ARROWS = False
+SHOW_TARGET_BALL = False
 SHOW_MPC_GHOSTS = True
-SHOW_MPC_REF_GHOST = True
+SHOW_MPC_REF_GHOST = False
 SHOW_MPC_TRAJECTORY = False
 SHOW_FOOT_TRAJECTORY = False
 SHOW_COM_TRAJECTORY = False
 SHOW_MPC_STATE_LINE = True
 SHOW_MPC_FOOT_LINES = True
+SHOW_ICR_POINT = True
 PRINT_MPC_DEBUG = True
 SAVE_MPC_DEBUG = True
 MPC_DEBUG_CSV = Path("/home/yzc/MPCtest/simple-mpc/mpc_debug.csv")
@@ -62,13 +63,16 @@ ARROW_HEAD_RADIUS = 0.04
 TARGET_BALL_RADIUS = 0.06
 TARGET_INTEGRATION_T = 1.0  # seconds (also MPC horizon time)
 
+# Instantaneous center of rotation (ICR)
+ICR_RADIUS = 0.06
+
 # MPC visualization
 MPC_GHOST_STRIDE = 5
 MPC_GHOST_ALPHA = 0.25
 
 # Camera
 FOLLOW_CAMERA = True
-CAMERA_DISTANCE = 1.2
+CAMERA_DISTANCE = 2.4
 CAMERA_YAW = 110
 CAMERA_PITCH = -11
 
@@ -379,6 +383,33 @@ def capture_frame(width: int, height: int) -> np.ndarray:
     )
     rgba = np.reshape(img[2], (height, width, 4))
     return rgba[:, :, :3]
+
+
+def _quat_from_two_vecs(v_from: np.ndarray, v_to: np.ndarray):
+    v_from = v_from / max(np.linalg.norm(v_from), 1e-9)
+    v_to = v_to / max(np.linalg.norm(v_to), 1e-9)
+    axis = np.cross(v_from, v_to)
+    axis_norm = np.linalg.norm(axis)
+    if axis_norm < 1e-9:
+        return [0, 0, 0, 1]
+    axis = axis / axis_norm
+    angle = np.arccos(np.clip(np.dot(v_from, v_to), -1.0, 1.0))
+    s = np.sin(angle * 0.5)
+    return [axis[0] * s, axis[1] * s, axis[2] * s, np.cos(angle * 0.5)]
+
+
+def add_line_geom(p0, p1, color, radius=0.01):
+    p0 = np.asarray(p0, dtype=float)
+    p1 = np.asarray(p1, dtype=float)
+    v = p1 - p0
+    length = float(np.linalg.norm(v))
+    if length < 1e-6:
+        return None
+    mid = (p0 + p1) * 0.5
+    quat = _quat_from_two_vecs(np.array([0.0, 0.0, 1.0]), v)
+    vis = p.createVisualShape(p.GEOM_CAPSULE, radius=radius, length=length, rgbaColor=color)
+    body = p.createMultiBody(baseMass=0, baseVisualShapeIndex=vis, basePosition=mid.tolist(), baseOrientation=quat)
+    return body
 
 
 def debug_mpc_horizon(mpc, model_handler, problem_conf, wheel_link_names, base_height):
@@ -982,6 +1013,10 @@ def main() -> None:
     if SHOW_TARGET_BALL:
         ball_vis = p.createVisualShape(p.GEOM_SPHERE, radius=TARGET_BALL_RADIUS, rgbaColor=[1.0, 0.2, 0.2, 1])
         target_ball_id = p.createMultiBody(baseMass=0, baseVisualShapeIndex=ball_vis)
+    icr_id = None
+    if SHOW_ICR_POINT:
+        icr_vis = p.createVisualShape(p.GEOM_SPHERE, radius=ICR_RADIUS, rgbaColor=[1.0, 0.2, 0.2, 1])
+        icr_id = p.createMultiBody(baseMass=0, baseVisualShapeIndex=icr_vis)
 
     # Arrow heads (spheres)
     vel_head_id = vel_d_head_id = ang_head_id = ang_d_head_id = -1
@@ -1014,7 +1049,7 @@ def main() -> None:
     nv = model.nv
     model_names = list(model.names)
     wheel_link_names = ["FL_wheel", "FR_wheel", "RL_wheel", "RR_wheel"]
-    # Foot trajectory z reference (world)
+    # Fixed foot height (world) based on initial pose
     q_init = model_handler.getReferenceState()[:nq].copy()
     q_init[0] = world_xyz[0, 0]
     q_init[1] = world_xyz[0, 1]
@@ -1037,6 +1072,8 @@ def main() -> None:
     com_traj_prev = None
     mpc_state_line_ids = []
     mpc_foot_line_ids = {name: [] for name in wheel_link_names}
+    mpc_state_line_bodies = []
+    mpc_foot_line_bodies = {name: [] for name in wheel_link_names}
 
     debug_csv_file = None
     debug_csv_writer = None
@@ -1194,6 +1231,7 @@ def main() -> None:
     def process_frame(frame: int):
         nonlocal vel_line_id, vel_d_line_id, ang_line_id, ang_d_line_id, line_ids, mpc_line_ids
         nonlocal foot_traj_lines, foot_traj_prev, com_traj_lines, com_traj_prev, mpc_state_line_ids, mpc_foot_line_ids
+        nonlocal mpc_state_line_bodies, mpc_foot_line_bodies
         base_xyz = world_xyz[frame]
         base_pos = np.array([base_xyz[0], base_xyz[1], base_xyz[2]]) + np.array(BASE_POS_OFFSET)
         quat = quat_from_rpy(float(roll[frame]), float(pitch[frame]), float(yaw[frame]))
@@ -1211,6 +1249,15 @@ def main() -> None:
         if SHOW_TARGET_BALL and target_ball_id is not None:
             ball_pos = [ball_xy[0] + BASE_POS_OFFSET[0], ball_xy[1] + BASE_POS_OFFSET[1], args.base_height + BASE_POS_OFFSET[2]]
             p.resetBasePositionAndOrientation(target_ball_id, ball_pos, [0, 0, 0, 1])
+        if SHOW_ICR_POINT and icr_id is not None:
+            omega = float(v_world_cmd[5])
+            if abs(omega) > 1e-6:
+                icr_x = base_xyz[0] - v_world_cmd[1] / omega
+                icr_y = base_xyz[1] + v_world_cmd[0] / omega
+                icr_pos = [icr_x + BASE_POS_OFFSET[0], icr_y + BASE_POS_OFFSET[1], base_xyz[2] + BASE_POS_OFFSET[2]]
+                p.resetBasePositionAndOrientation(icr_id, icr_pos, [0, 0, 0, 1])
+            else:
+                p.resetBasePositionAndOrientation(icr_id, [0.0, 0.0, -100.0], [0, 0, 0, 1])
 
         # Joints
         for idx, qv in zip(joint_indices, q[frame]):
@@ -1276,10 +1323,10 @@ def main() -> None:
             pin.updateFramePlacements(model, data_traj)
             if SHOW_FOOT_TRAJECTORY:
                 foot_colors = {
-                    "FL_wheel": [0.9, 0.4, 0.4],
-                    "FR_wheel": [0.4, 0.9, 0.4],
-                    "RL_wheel": [0.4, 0.4, 0.9],
-                    "RR_wheel": [0.9, 0.9, 0.4],
+                    "FL_wheel": [1.0, 0.0, 0.0],  # red
+                    "FR_wheel": [0.0, 1.0, 0.0],  # green
+                    "RL_wheel": [0.0, 0.4, 1.0],  # blue
+                    "RR_wheel": [1.0, 0.9, 0.0],  # yellow
                 }
                 for name in wheel_link_names:
                     fid = model_handler.getFootFrameId(model_handler.getFootNb(name))
@@ -1302,7 +1349,7 @@ def main() -> None:
                     lid = p.addUserDebugLine(
                         [com_traj_prev[0], com_traj_prev[1], com_traj_prev[2]],
                         [com[0], com[1], com[2]],
-                        lineColorRGB=[0.1, 0.8, 0.8],
+                        lineColorRGB=[0.0, 0.85, 0.85],
                         lineWidth=2,
                     )
                     com_traj_lines.append(lid)
@@ -1312,9 +1359,14 @@ def main() -> None:
 
         # MPC state line: from current state to terminal ghost (sample ~10 points)
         if SHOW_MPC_STATE_LINE and mpc.xs:
-            for lid in mpc_state_line_ids:
-                p.removeUserDebugItem(lid)
-            mpc_state_line_ids = []
+            if use_geom_lines:
+                for bid in mpc_state_line_bodies:
+                    p.removeBody(bid)
+                mpc_state_line_bodies = []
+            else:
+                for lid in mpc_state_line_ids:
+                    p.removeUserDebugItem(lid)
+                mpc_state_line_ids = []
             samples = 10
             idxs = np.linspace(0, len(mpc.xs) - 1, samples, dtype=int).tolist()
             pts = []
@@ -1326,27 +1378,37 @@ def main() -> None:
                     xs[2] + BASE_POS_OFFSET[2],
                 ])
             for i in range(1, len(pts)):
-                mpc_state_line_ids.append(
-                    p.addUserDebugLine(
-                        pts[i - 1],
-                        pts[i],
-                        lineColorRGB=[0.95, 0.8, 0.2],
-                        lineWidth=3,
+                if use_geom_lines:
+                    bid = add_line_geom(pts[i - 1], pts[i], [0.85, 0.0, 0.85, 1.0], radius=0.02)
+                    if bid is not None:
+                        mpc_state_line_bodies.append(bid)
+                else:
+                    mpc_state_line_ids.append(
+                        p.addUserDebugLine(
+                            pts[i - 1],
+                            pts[i],
+                            lineColorRGB=[0.85, 0.0, 0.85],
+                            lineWidth=6,
+                        )
                     )
-                )
 
         # MPC foot trajectories: sample ~10 points along horizon
         if SHOW_MPC_FOOT_LINES and mpc.xs:
             foot_colors = {
-                "FL_wheel": [0.9, 0.4, 0.4],
-                "FR_wheel": [0.4, 0.9, 0.4],
-                "RL_wheel": [0.4, 0.4, 0.9],
-                "RR_wheel": [0.9, 0.9, 0.4],
+                "FL_wheel": [1.0, 0.0, 0.0],  # red
+                "FR_wheel": [0.0, 1.0, 0.0],  # green
+                "RL_wheel": [0.0, 0.4, 1.0],  # blue
+                "RR_wheel": [1.0, 0.9, 0.0],  # yellow
             }
             for name in wheel_link_names:
-                for lid in mpc_foot_line_ids[name]:
-                    p.removeUserDebugItem(lid)
-                mpc_foot_line_ids[name] = []
+                if use_geom_lines:
+                    for bid in mpc_foot_line_bodies[name]:
+                        p.removeBody(bid)
+                    mpc_foot_line_bodies[name] = []
+                else:
+                    for lid in mpc_foot_line_ids[name]:
+                        p.removeUserDebugItem(lid)
+                    mpc_foot_line_ids[name] = []
             samples = 10
             idxs = np.linspace(0, len(mpc.xs) - 1, samples, dtype=int).tolist()
             data_k = pin.Data(model)
@@ -1366,13 +1428,18 @@ def main() -> None:
                     p_vis = [pw[0] + BASE_POS_OFFSET[0], pw[1] + BASE_POS_OFFSET[1], z_fixed + BASE_POS_OFFSET[2]]
                     prev = prev_pts[name]
                     if prev is not None:
-                        lid = p.addUserDebugLine(
-                            prev,
-                            p_vis,
-                            lineColorRGB=foot_colors[name],
-                            lineWidth=2,
-                        )
-                        mpc_foot_line_ids[name].append(lid)
+                        if use_geom_lines:
+                            bid = add_line_geom(prev, p_vis, foot_colors[name] + [1.0], radius=0.015)
+                            if bid is not None:
+                                mpc_foot_line_bodies[name].append(bid)
+                        else:
+                            lid = p.addUserDebugLine(
+                                prev,
+                                p_vis,
+                                lineColorRGB=foot_colors[name],
+                                lineWidth=4,
+                            )
+                            mpc_foot_line_ids[name].append(lid)
                     prev_pts[name] = p_vis
         rows = None
         if PRINT_MPC_DEBUG:
@@ -1481,10 +1548,12 @@ def main() -> None:
         video_out = "out.mp4"
 
     if video_out:
+        use_geom_lines = True
         try:
             import imageio.v2 as imageio
         except Exception as exc:
             raise SystemExit("imageio is required for video output. Install with: pip install imageio imageio-ffmpeg") from exc
+        p.configureDebugVisualizer(p.COV_ENABLE_SINGLE_STEP_RENDERING, 1)
         start_frame = max(args.video_start, 0)
         end_frame = args.video_end if args.video_end >= 0 else num_frames - 1
         end_frame = min(end_frame, num_frames - 1)
@@ -1510,11 +1579,13 @@ def main() -> None:
         writer = imageio.get_writer(video_out, fps=args.video_fps)
         for frame in frames:
             process_frame(frame)
+            p.stepSimulation()
             rgb = capture_frame(args.video_width, args.video_height)
             writer.append_data(rgb)
         writer.close()
         return
 
+    use_geom_lines = False
     last_frame = -1
     while True:
         frame = int(p.readUserDebugParameter(frame_slider))
