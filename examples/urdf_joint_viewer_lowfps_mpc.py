@@ -255,9 +255,9 @@ def build_mpc():
         foot_sum_cstr=False,
         w_foot_sum=6000,
         foot_sum_z_offset=wheel_radius,
-        wheel_axle_height_cstr=False,
-        wheel_axle_height_min=0.5 * wheel_radius,
-        wheel_axle_height_max=1.0 * wheel_radius,
+        wheel_axle_height_cstr=True,
+        wheel_axle_height_min=0.9 * wheel_radius,
+        wheel_axle_height_max=1.1 * wheel_radius,
     )
 
     horizon_T = int(round(TARGET_INTEGRATION_T / dt_mpc))
@@ -1066,6 +1066,9 @@ def main() -> None:
     for name in wheel_link_names:
         fid = model_handler.getFootFrameId(model_handler.getFootNb(name))
         foot_axis_z_world[name] = float(data_init.oMf[fid].translation[2])
+    avg_axle_height = float(np.mean(list(foot_axis_z_world.values()))) if foot_axis_z_world else 0.0
+    problem_conf["wheel_axle_height_min"] = 0.9 * avg_axle_height
+    problem_conf["wheel_axle_height_max"] = 1.1 * avg_axle_height
     foot_traj_lines = {name: [] for name in wheel_link_names}
     foot_traj_prev = {name: None for name in wheel_link_names}
     com_traj_lines = []
@@ -1331,6 +1334,8 @@ def main() -> None:
                 for name in wheel_link_names:
                     fid = model_handler.getFootFrameId(model_handler.getFootNb(name))
                     p_now = data_traj.oMf[fid].translation
+                    p_now = p_now.copy()
+                    p_now[2] = 0.0
                     prev = foot_traj_prev[name]
                     if prev is not None:
                         lid = p.addUserDebugLine(
@@ -1424,8 +1429,7 @@ def main() -> None:
                 for name in wheel_link_names:
                     fid = model_handler.getFootFrameId(model_handler.getFootNb(name))
                     pw = data_k.oMf[fid].translation
-                    z_fixed = foot_axis_z_world.get(name, float(pw[2]))
-                    p_vis = [pw[0] + BASE_POS_OFFSET[0], pw[1] + BASE_POS_OFFSET[1], z_fixed + BASE_POS_OFFSET[2]]
+                    p_vis = [pw[0] + BASE_POS_OFFSET[0], pw[1] + BASE_POS_OFFSET[1], -0.1015 + BASE_POS_OFFSET[2]]
                     prev = prev_pts[name]
                     if prev is not None:
                         if use_geom_lines:

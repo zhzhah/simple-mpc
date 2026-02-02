@@ -338,6 +338,8 @@ def _update_ghost(robot_id, local_inertia_pos, joint_indices, q_ref_full):
         p.resetJointState(robot_id, j_idx, q_ref_full[7 + i])
 
 
+target_robot_id, target_local_inertia_pos, target_joint_indices = _spawn_ghost([0.2, 0.9, 0.2, 0.35])
+terminal_target_robot_id, terminal_target_local_inertia_pos, terminal_target_joint_indices = _spawn_ghost([0.1, 0.6, 0.1, 0.35])
 terminal_robot_id, terminal_local_inertia_pos, terminal_joint_indices = _spawn_ghost([0.95, 0.5, 0.2, 0.35])
 
 # 机身系速度指令（来自可视化滑条）
@@ -489,6 +491,24 @@ for step in range(300000):
     mpc.iterate(x_measured)
     end = time.time()
     solve_time.append(end - start)
+
+    try:
+        x_ref0 = np.asarray(mpc.ocp_handler.getReferenceState(0)).copy()
+    except Exception:
+        x_ref0 = model_handler.getReferenceState().copy()
+    try:
+        x_refT = np.asarray(mpc.ocp_handler.getReferenceState(T - 1)).copy()
+    except Exception:
+        x_refT = x_ref0
+    _update_ghost(
+        target_robot_id, target_local_inertia_pos, target_joint_indices, x_ref0[:nq]
+    )
+    _update_ghost(
+        terminal_target_robot_id,
+        terminal_target_local_inertia_pos,
+        terminal_target_joint_indices,
+        x_refT[:nq],
+    )
 
     if len(mpc.xs) > 0:
         q_last = np.asarray(mpc.xs[-1][:nq]).copy()
