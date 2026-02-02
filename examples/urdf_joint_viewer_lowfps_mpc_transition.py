@@ -38,7 +38,7 @@ SHOW_TARGET_GHOST = False
 SHOW_VELOCITY_ARROWS = False
 SHOW_TARGET_BALL = False
 SHOW_MPC_GHOSTS = True
-SHOW_MPC_REF_GHOST = False
+SHOW_MPC_REF_GHOST = True
 SHOW_MPC_TRAJECTORY = False
 SHOW_FOOT_TRAJECTORY = False
 SHOW_COM_TRAJECTORY = False
@@ -155,7 +155,7 @@ def build_mpc():
 
     # Terminal weights (separate from stage weights)
     w_basepos_T = [10000, 10000, 10000, 10000.0, 10000.0, 100000]
-    w_jointpos_T = [100.1, 100.1, 100.1, 0.0]
+    w_jointpos_T = [1000.1, 1000.1, 1000.1, 0.0]
     w_basevel_T = [10, 10, 10, 10, 10, 10]
     w_jointvel_T = [0.1, 0.1, 0.1, 0.0]
 
@@ -210,133 +210,56 @@ def build_mpc():
         qmin[idx_q - 7 : idx_q - 7 + nq_joint] = -1e9
         qmax[idx_q - 7 : idx_q - 7 + nq_joint] = 1e9
 
-    # ---- Problem configuration (grouped) ----
-    # Costs (state/control)
-    cost_conf = dict(
+    problem_conf = dict(
+        timestep=dt_mpc,
         w_x=w_x,
         w_u=w_u,
         w_cent=w_cent,
         w_centder=w_centder,
         w_x_terminal=w_x_T,
         w_cent_terminal=w_cent * 1.0,
+        gravity=gravity,
+        force_size=3,
         w_frame=np.array([0.0, 0.0, 0.0]),
-    )
-
-    # Costs (aux/soft that are not constraint-softenings)
-    soft_cost_conf = dict(
-        vector_glide_weight=1000.0,
-        vector_glide_weight_base=1000.0,
-        vector_glide_min_omega=1e-6,
-    )
-
-    # Constraints: per-constraint enable + mode + slack settings
-    # mode: "hard" uses *_cstr flags; "soft" uses corresponding cost where available
-    # weight is the final soft-constraint weight
-    # slack_enable/slack_range are placeholders for future hard constraints with relaxation
-    constraint_modes = dict(
-        kinematics_limits=dict(enable=True, mode="hard", weight=0.0, slack_enable=False, slack_range=0.0),
-        force_cone=dict(enable=False, mode="hard", weight=0.0, slack_enable=False, slack_range=0.0),
-        land_cstr=dict(enable=False, mode="hard", weight=0.0, slack_enable=False, slack_range=0.0),
-        nonholonomic_rolling=dict(enable=False, mode="hard", weight=0.0, slack_enable=False, slack_range=0.0),
-        lateral_no_slip=dict(enable=True, mode="hard", weight=20.0, slack_enable=False, slack_range=0.0),
-        min_wheel_distance=dict(enable=False, mode="soft", weight=0.05, slack_enable=False, slack_range=0.0),
-        force_z_variance=dict(enable=False, mode="soft", weight=10.0, slack_enable=False, slack_range=0.0),
-        joint_limit=dict(enable=False, mode="soft", weight=2.0, slack_enable=False, slack_range=0.0),
-        track_width=dict(enable=False, mode="hard", weight=0.0, slack_enable=False, slack_range=0.0),
-        foot_sum=dict(enable=False, mode="hard", weight=0.0, slack_enable=False, slack_range=0.0),
-        wheel_axle_height=dict(enable=True, mode="hard", weight=0.0, slack_enable=False, slack_range=0.0),
-    )
-
-    # Constraint parameters
-    constraint_params = dict(
+        qmin=qmin,
+        qmax=qmax,
         mu=0.8,
         Lfoot=0.01,
         Wfoot=0.01,
-        min_wheel_distance_cost_eps=1e-3,
-        joint_limit_soft_fraction=0.5,
+        kinematics_limits=True,
+        force_cone=False,
+        land_cstr=False,
+        nonholonomic_rolling=False,
+        enable_lateral_no_slip=True,
         lateral_no_slip_min_axis_norm=1e-12,
         lateral_no_slip_min_cross_norm=1e-8,
         use_vector_glide_cost=True,
+        vector_glide_weight=1000.0,
+        vector_glide_weight_base=1000.0,
         vector_glide_disable_on_twist=True,
+        vector_glide_min_omega=1e-6,
+        min_wheel_distance_cstr=False,
         min_wheel_distance=1.2 * 2.0 * wheel_radius,
+        min_wheel_distance_cost=False,
+        w_min_wheel_distance=0.05,
+        min_wheel_distance_cost_eps=1e-3,
+        force_z_variance_cost=False,
+        w_force_z_variance=10.0,
+        joint_limit_soft_cost=False,
+        w_joint_limit_soft=2.0,
+        joint_limit_soft_fraction=0.5,
+        soft_constraints=False,
+        w_soft_contact_vel=20.0,
+        w_soft_friction=0.0,
+        w_soft_land=0.0,
+        track_width_cstr=False,
+        w_track_width=6000,
+        foot_sum_cstr=False,
+        w_foot_sum=6000,
         foot_sum_z_offset=wheel_radius,
+        wheel_axle_height_cstr=True,
         wheel_axle_height_min=0.5 * wheel_radius,
         wheel_axle_height_max=1.0 * wheel_radius,
-    )
-
-    # Build final problem_conf
-    problem_conf = dict(
-        timestep=dt_mpc,
-        gravity=gravity,
-        force_size=3,
-        qmin=qmin,
-        qmax=qmax,
-        **cost_conf,
-        **soft_cost_conf,
-        **constraint_params,
-        constraint_modes=constraint_modes,
-    )
-
-    # Apply constraint modes to concrete flags/cost switches expected by C++
-    problem_conf["kinematics_limits"] = (
-        constraint_modes["kinematics_limits"]["enable"]
-        and constraint_modes["kinematics_limits"]["mode"] == "hard"
-    )
-    problem_conf["force_cone"] = (
-        constraint_modes["force_cone"]["enable"]
-        and constraint_modes["force_cone"]["mode"] == "hard"
-    )
-    problem_conf["land_cstr"] = (
-        constraint_modes["land_cstr"]["enable"]
-        and constraint_modes["land_cstr"]["mode"] == "hard"
-    )
-    problem_conf["nonholonomic_rolling"] = (
-        constraint_modes["nonholonomic_rolling"]["enable"]
-        and constraint_modes["nonholonomic_rolling"]["mode"] == "hard"
-    )
-    problem_conf["track_width_cstr"] = (
-        constraint_modes["track_width"]["enable"]
-        and constraint_modes["track_width"]["mode"] == "hard"
-    )
-    problem_conf["foot_sum_cstr"] = (
-        constraint_modes["foot_sum"]["enable"]
-        and constraint_modes["foot_sum"]["mode"] == "hard"
-    )
-    problem_conf["wheel_axle_height_cstr"] = (
-        constraint_modes["wheel_axle_height"]["enable"]
-        and constraint_modes["wheel_axle_height"]["mode"] == "hard"
-    )
-    problem_conf["enable_lateral_no_slip"] = constraint_modes["lateral_no_slip"]["enable"]
-
-    # Always provide soft-weight keys expected by C++ (even if disabled)
-    problem_conf["w_soft_friction"] = constraint_modes["force_cone"]["weight"]
-    problem_conf["w_soft_land"] = constraint_modes["land_cstr"]["weight"]
-    problem_conf["w_soft_contact_vel"] = constraint_modes["lateral_no_slip"]["weight"]
-    problem_conf["w_min_wheel_distance"] = constraint_modes["min_wheel_distance"]["weight"]
-    problem_conf["w_force_z_variance"] = constraint_modes["force_z_variance"]["weight"]
-    problem_conf["w_joint_limit_soft"] = constraint_modes["joint_limit"]["weight"]
-    problem_conf["w_track_width"] = constraint_modes["track_width"]["weight"]
-    problem_conf["w_foot_sum"] = constraint_modes["foot_sum"]["weight"]
-
-    # Soft-only switches (costs)
-    problem_conf["min_wheel_distance_cstr"] = (
-        constraint_modes["min_wheel_distance"]["enable"]
-        and constraint_modes["min_wheel_distance"]["mode"] == "hard"
-    )
-    problem_conf["min_wheel_distance_cost"] = (
-        constraint_modes["min_wheel_distance"]["enable"]
-        and constraint_modes["min_wheel_distance"]["mode"] == "soft"
-    )
-    problem_conf["force_z_variance_cost"] = (
-        constraint_modes["force_z_variance"]["enable"]
-        and constraint_modes["force_z_variance"]["mode"] == "soft"
-    )
-    problem_conf["joint_limit_soft_cost"] = (
-        constraint_modes["joint_limit"]["enable"]
-        and constraint_modes["joint_limit"]["mode"] == "soft"
-    )
-    problem_conf["soft_constraints"] = any(
-        m["enable"] and m["mode"] == "soft" for m in constraint_modes.values()
     )
 
     horizon_T = int(round(TARGET_INTEGRATION_T / dt_mpc))
@@ -994,6 +917,7 @@ def main() -> None:
             raise SystemExit(f"Missing column: {c}")
 
     q = df[joint_cols].to_numpy()
+    q_init_joints = q[0].copy()
     world_xyz = df[["world_x", "world_y", "world_z"]].to_numpy()
     tgt_world_xyz = df[["tgt_world_x", "tgt_world_y", "tgt_world_z"]].to_numpy() if SHOW_TARGET_GHOST else None
     yaw = df["yaw"].to_numpy()
@@ -1292,16 +1216,13 @@ def main() -> None:
         v_world_cmd_local[1] = vx_cmd_local * np.sin(yaw[frame_idx])
         v_world_cmd_local[5] = wz_cmd_local
 
-        horizon_frames_local = max(1, int(round(TARGET_INTEGRATION_T * args.data_hz)))
-        tgt_idx_local = min(frame_idx + horizon_frames_local, num_frames - 1)
-
         q_term_local = model_handler.getReferenceState()[:nq].copy()
         q_term_local[0] = ball_xy_local[0] - base_xyz_local[0]
         q_term_local[1] = ball_xy_local[1] - base_xyz_local[1]
         q_term_local[2] = base_xyz_local[2]
         yaw_term_local = yaw[frame_idx] + wz_cmd_local * TARGET_INTEGRATION_T
         q_term_local[3:7] = quat_from_rpy(float(roll[frame_idx]), pitch_use, float(yaw_term_local))
-        for joint_name, qv in zip(joint_order, q[tgt_idx_local]):
+        for joint_name, qv in zip(joint_order, q_init_joints):
             joint_id = model.getJointId(joint_name)
             idx_q = model.joints[joint_id].idx_q
             q_term_local[idx_q : idx_q + model.joints[joint_id].nq] = qv
