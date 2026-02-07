@@ -81,6 +81,11 @@ namespace simple_mpc
     bool wheel_axle_height_cstr = false;
     double wheel_axle_height_min = 0.0;
     double wheel_axle_height_max = 0.0;
+    bool icr_arc_cstr = false;
+    double icr_arc_min_omega = 1e-6;
+    double w_hip_sum = 0.0;
+    std::vector<std::string> hip_joint_names;
+    double w_icr_axle = 0.0;
   };
 
   class KinodynamicsOCP : public OCPHandler
@@ -128,6 +133,8 @@ namespace simple_mpc
     const ConstVectorRef getReferenceState(const std::size_t t) override;
 
     void computeControlFromForces(const std::map<std::string, Eigen::VectorXd> & force_refs);
+    void setIcrArcParams(const Eigen::Vector4d & icr_params);
+    Eigen::Vector4d getIcrArcParams() const;
 
     KinodynamicsSettings getSettings()
     {
@@ -139,6 +146,7 @@ namespace simple_mpc
     double track_width_front_ = 0.0;
     double track_width_rear_ = 0.0;
     Eigen::Vector3d foot_sum_target_ = Eigen::Vector3d::Zero();
+    Eigen::Vector4d icr_arc_params_ = Eigen::Vector4d::Zero();
     Eigen::VectorXd vector_glide_velocity_base_;
     std::vector<double> wheel_distance_ref_;
   };

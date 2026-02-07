@@ -2,6 +2,7 @@
 #include "simple-mpc/python.hpp"
 
 #include <eigenpy/std-map.hpp>
+#include <eigenpy/std-vector.hpp>
 
 namespace simple_mpc::python
 {
@@ -73,6 +74,16 @@ namespace simple_mpc::python
       conf.wheel_axle_height_min = bp::extract<double>(settings["wheel_axle_height_min"]);
     if (settings.has_key("wheel_axle_height_max"))
       conf.wheel_axle_height_max = bp::extract<double>(settings["wheel_axle_height_max"]);
+    if (settings.has_key("icr_arc_cstr"))
+      conf.icr_arc_cstr = bp::extract<bool>(settings["icr_arc_cstr"]);
+    if (settings.has_key("icr_arc_min_omega"))
+      conf.icr_arc_min_omega = bp::extract<double>(settings["icr_arc_min_omega"]);
+    if (settings.has_key("w_hip_sum"))
+      conf.w_hip_sum = bp::extract<double>(settings["w_hip_sum"]);
+    if (settings.has_key("hip_joint_names"))
+      conf.hip_joint_names = bp::extract<std::vector<std::string>>(settings["hip_joint_names"]);
+    if (settings.has_key("w_icr_axle"))
+      conf.w_icr_axle = bp::extract<double>(settings["w_icr_axle"]);
 
     return new KinodynamicsOCP(conf, model_handler);
   }
@@ -130,6 +141,11 @@ namespace simple_mpc::python
     settings["wheel_axle_height_cstr"] = conf.wheel_axle_height_cstr;
     settings["wheel_axle_height_min"] = conf.wheel_axle_height_min;
     settings["wheel_axle_height_max"] = conf.wheel_axle_height_max;
+    settings["icr_arc_cstr"] = conf.icr_arc_cstr;
+    settings["icr_arc_min_omega"] = conf.icr_arc_min_omega;
+    settings["w_hip_sum"] = conf.w_hip_sum;
+    settings["hip_joint_names"] = conf.hip_joint_names;
+    settings["w_icr_axle"] = conf.w_icr_axle;
 
     return settings;
   }
@@ -202,7 +218,9 @@ namespace simple_mpc::python
         "__init__",
         bp::make_constructor(&createKinodynamics, bp::default_call_policies(), ("settings"_a, "model_handler")))
       .def("getSettings", &getSettingsKino)
-      .def("createStage", &createKinoStage);
+      .def("createStage", &createKinoStage)
+      .def("setIcrArcParams", &KinodynamicsOCP::setIcrArcParams, ("self"_a, "icr_params"))
+      .def("getIcrArcParams", &KinodynamicsOCP::getIcrArcParams, "self"_a);
   }
 
 } // namespace simple_mpc::python

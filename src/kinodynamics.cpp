@@ -18,6 +18,9 @@
 #include "simple-mpc/wheel-axle-height.hpp"
 #include "simple-mpc/lateral-no-slip.hpp"
 #include "simple-mpc/vector-glide.hpp"
+#include "simple-mpc/icr-arc.hpp"
+#include "simple-mpc/icr-axle.hpp"
+#include "simple-mpc/hip-sum.hpp"
 #include "simple-mpc/wheel-distance.hpp"
 #include "simple-mpc/mpc-extra-costs.hpp"
 
@@ -223,6 +226,25 @@ namespace simple_mpc
       rcost.addCost("force_z_variance_cost", QuadraticResidualCost(space, force_var_residual, w));
     }
 
+    if (settings_.w_hip_sum > 0.0 && !settings_.hip_joint_names.empty())
+    {
+      HipSumResidual hip_sum_residual(
+        space.ndx(), nu_, model_handler_.getModel(), settings_.hip_joint_names);
+      const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(1, 1) * settings_.w_hip_sum;
+      rcost.addCost("hip_sum_cost", QuadraticResidualCost(space, hip_sum_residual, w));
+    }
+
+    if (settings_.w_icr_axle > 0.0 && model_handler_.getFeetNb() >= 4)
+    {
+      ICRAxleResidual icr_axle_residual(
+        space.ndx(), nu_, model_handler_.getModel(),
+        model_handler_.getFootFrameId(0), model_handler_.getFootFrameId(2),
+        model_handler_.getFootFrameId(1), model_handler_.getFootFrameId(3),
+        &icr_arc_params_);
+      const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(2, 2) * settings_.w_icr_axle;
+      rcost.addCost("icr_axle_cost", QuadraticResidualCost(space, icr_axle_residual, w));
+    }
+
     if (settings_.joint_limit_soft_cost && settings_.w_joint_limit_soft > 0.0 && settings_.joint_limit_soft_fraction > 0.0)
     {
       JointLimitSoftResidual joint_limit_residual(
@@ -325,6 +347,13 @@ namespace simple_mpc
       lower.setConstant(settings_.wheel_axle_height_min);
       upper.setConstant(settings_.wheel_axle_height_max);
       stm.addConstraint(axle_height_residual, BoxConstraint(lower, upper));
+    }
+
+    if (settings_.icr_arc_cstr)
+    {
+      ICRArcResidual icr_arc_residual(
+        space.ndx(), nu_, model_handler_.getModel(), model_handler_.getBaseFrameId(), &icr_arc_params_);
+      stm.addConstraint(icr_arc_residual, EqualityConstraint());
     }
 
     if (settings_.kinematics_limits)
@@ -607,6 +636,16 @@ namespace simple_mpc
     x0_.segment(nq_, 6) = velocity_base;
     qc->setTarget(x0_);
     vector_glide_velocity_base_ = velocity_base;
+  }
+
+  void KinodynamicsOCP::setIcrArcParams(const Eigen::Vector4d & icr_params)
+  {
+    icr_arc_params_ = icr_params;
+  }
+
+  Eigen::Vector4d KinodynamicsOCP::getIcrArcParams() const
+  {
+    return icr_arc_params_;
   }
 
   const Eigen::VectorXd KinodynamicsOCP::getPoseBase(const std::size_t t)
