@@ -135,6 +135,7 @@ namespace simple_mpc
     void computeControlFromForces(const std::map<std::string, Eigen::VectorXd> & force_refs);
     void setIcrArcParams(const Eigen::Vector4d & icr_params);
     Eigen::Vector4d getIcrArcParams() const;
+    void setVectorGlideWeight(double weight);
 
     KinodynamicsSettings getSettings()
     {

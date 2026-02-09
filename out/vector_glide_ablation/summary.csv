@@ -1,0 +1,2 @@
+radius,weight,vx_cmd,wz_cmd,yaw0,expected_time,max_time,actual_time,completed,lin_err_mean,yaw_err_mean
+1.0,100.0,0.4,0.4,0.0,15.707963267948966,20.420352248333657,0.2900000000000002,1,35.95133853752154,35.36456370499708

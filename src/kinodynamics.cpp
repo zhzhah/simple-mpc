@@ -648,6 +648,33 @@ namespace simple_mpc
     return icr_arc_params_;
   }
 
+  void KinodynamicsOCP::setVectorGlideWeight(double weight)
+  {
+    settings_.vector_glide_weight = weight;
+    if (!settings_.use_vector_glide_cost)
+    {
+      return;
+    }
+    const Eigen::MatrixXd w = Eigen::MatrixXd::Identity(1, 1) * weight;
+    for (std::size_t t = 0; t < getSize(); ++t)
+    {
+      CostStack * cs = getCostStack(t);
+      for (const auto & name : model_handler_.getFeetFrameNames())
+      {
+        try
+        {
+          QuadraticResidualCost * qrc = cs->getComponent<QuadraticResidualCost>(name + "_vector_glide_cost");
+          qrc->weights_ = w;
+        }
+        catch (const std::exception &)
+        {
+          // Cost may not exist for this stage/foot (e.g., not in contact)
+          continue;
+        }
+      }
+    }
+  }
+
   const Eigen::VectorXd KinodynamicsOCP::getPoseBase(const std::size_t t)
   {
     CostStack * cs = getCostStack(t);

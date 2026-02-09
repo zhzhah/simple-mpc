@@ -157,13 +157,13 @@ def build_mpc():
         w_basepos = [ICR_ARC_POS_WEIGHT, ICR_ARC_POS_WEIGHT, 1, 0.0, 1000.0, 1000]
     else:
         w_basepos = [1, 1, 1, 9000.0, 9000.0, 1000]
-    w_jointpos = [100.1, 100.1, 100.1, 0.0]
+    w_jointpos = [1879.64, 249.799, 220.196, 0.0]
     w_basevel = [0, 0, 0, 10, 10, 20]
     w_jointvel = [0.1, 0.1, 0.1, 0.1]
 
     # Terminal weights (separate from stage weights)
     w_basepos_T = [100000, 100000, 30000, 9000.0, 9000.0, 100000]
-    w_jointpos_T = [100.1, 100.1, 100.1, 0.0]
+    w_jointpos_T = [1879.64, 249.799, 220.196, 0.0]
     w_basevel_T = [100, 100, 10, 10, 10, 100]
     w_jointvel_T = [0.1, 0.1, 0.1, 0.1]
 
@@ -243,7 +243,7 @@ def build_mpc():
         lateral_no_slip_min_cross_norm=1e-8,
         use_vector_glide_cost=True,
         vector_glide_weight=5000.0,
-        vector_glide_weight_base=5000.0,
+        vector_glide_weight_base=10992.2,
         vector_glide_disable_on_twist=True,
         vector_glide_min_omega=1e-6,
         min_wheel_distance_cstr=False,
@@ -273,8 +273,8 @@ def build_mpc():
         icr_arc_cstr=True,
         icr_arc_min_omega=1e-6,
         icr_arc_max_radius=100.0,
-        w_hip_sum=100.0,
-        w_icr_axle=50.0,
+        w_hip_sum=1937.92,
+        w_icr_axle=56.7218,
         hip_joint_names=[
             "FR_hip_joint",
             "RR_hip_joint",
@@ -1115,14 +1115,24 @@ def main() -> None:
             return (20.0 ** (2.0 * s) - 1.0) / 19.0
         return 1.0 + (20.0 ** (2.0 * s - 1.0) - 1.0)
 
-    def _add_weight_slider(label: str) -> int:
-        return p.addUserDebugParameter(label, 0.0, 1.0, 0.5)
+    def _add_weight_slider(label: str, vmin: float = 0.0, vmax: float = 1.0, vdefault: float = 0.5) -> int:
+        return p.addUserDebugParameter(label, float(vmin), float(vmax), float(vdefault))
 
     def _read_slider_value(slider: int) -> float:
         s = float(p.readUserDebugParameter(slider))
         if not np.isfinite(s):
             return 0.5
         return s
+
+    def _weight_from_slider(base: float, slider: int, mode: str) -> float:
+        if mode == "direct":
+            weight = float(p.readUserDebugParameter(slider))
+        else:
+            s = _read_slider_value(slider)
+            weight = float(base * _exp20_scale(s))
+        if not np.isfinite(weight) or weight < 0.0:
+            return 0.0
+        return weight
 
     # Mouse drag camera control
     mouse_state = {"last": None, "buttons": set()}
@@ -1193,48 +1203,48 @@ def main() -> None:
     # Vector glide weight (base)
     if problem_conf.get("use_vector_glide_cost", False):
         base = float(problem_conf.get("vector_glide_weight_base", 1000.0))
-        cost_sliders["vector_glide_weight_base"] = (base, _add_weight_slider("vector_glide_weight_base"))
+        cost_sliders["vector_glide_weight_base"] = (base, _add_weight_slider("vector_glide_weight_base"), "exp20")
     # Track width (soft cost)
     if problem_conf.get("track_width_cstr", False) and problem_conf.get("w_track_width", 0.0) > 0.0:
         base = float(problem_conf.get("w_track_width", 0.0))
-        cost_sliders["w_track_width"] = (base, _add_weight_slider("w_track_width"))
+        cost_sliders["w_track_width"] = (base, _add_weight_slider("w_track_width"), "exp20")
     # Foot sum (soft cost)
     if problem_conf.get("foot_sum_cstr", False) and problem_conf.get("w_foot_sum", 0.0) > 0.0:
         base = float(problem_conf.get("w_foot_sum", 0.0))
-        cost_sliders["w_foot_sum"] = (base, _add_weight_slider("w_foot_sum"))
+        cost_sliders["w_foot_sum"] = (base, _add_weight_slider("w_foot_sum"), "exp20")
     # Min wheel distance (soft cost)
     if problem_conf.get("min_wheel_distance_cost", False) and problem_conf.get("w_min_wheel_distance", 0.0) > 0.0:
         base = float(problem_conf.get("w_min_wheel_distance", 0.0))
-        cost_sliders["w_min_wheel_distance"] = (base, _add_weight_slider("w_min_wheel_distance"))
+        cost_sliders["w_min_wheel_distance"] = (base, _add_weight_slider("w_min_wheel_distance"), "exp20")
     # Force z variance (soft cost)
     if problem_conf.get("force_z_variance_cost", False) and problem_conf.get("w_force_z_variance", 0.0) > 0.0:
         base = float(problem_conf.get("w_force_z_variance", 0.0))
-        cost_sliders["w_force_z_variance"] = (base, _add_weight_slider("w_force_z_variance"))
+        cost_sliders["w_force_z_variance"] = (base, _add_weight_slider("w_force_z_variance"), "exp20")
     # Joint limit soft (soft cost)
     if problem_conf.get("joint_limit_soft_cost", False) and problem_conf.get("w_joint_limit_soft", 0.0) > 0.0:
         base = float(problem_conf.get("w_joint_limit_soft", 0.0))
-        cost_sliders["w_joint_limit_soft"] = (base, _add_weight_slider("w_joint_limit_soft"))
+        cost_sliders["w_joint_limit_soft"] = (base, _add_weight_slider("w_joint_limit_soft"), "exp20")
     # Hip sum (soft cost)
     if problem_conf.get("hip_joint_names", []):
         base = float(problem_conf.get("w_hip_sum", 0.0))
         if base <= 0.0:
             base = 1.0
-        cost_sliders["w_hip_sum"] = (base, _add_weight_slider("w_hip_sum"))
+        cost_sliders["w_hip_sum"] = (base, _add_weight_slider("w_hip_sum"), "exp20")
     # ICR axle line (soft cost)
     if problem_conf.get("w_icr_axle", 0.0) > 0.0:
         base = float(problem_conf.get("w_icr_axle", 0.0))
-        cost_sliders["w_icr_axle"] = (base, _add_weight_slider("w_icr_axle"))
+        cost_sliders["w_icr_axle"] = (base, _add_weight_slider("w_icr_axle"), "exp20")
     # Soft constraints (if enabled)
     if problem_conf.get("soft_constraints", False):
         if problem_conf.get("w_soft_contact_vel", 0.0) > 0.0:
             base = float(problem_conf.get("w_soft_contact_vel", 0.0))
-            cost_sliders["w_soft_contact_vel"] = (base, _add_weight_slider("w_soft_contact_vel"))
+            cost_sliders["w_soft_contact_vel"] = (base, _add_weight_slider("w_soft_contact_vel"), "exp20")
         if problem_conf.get("w_soft_friction", 0.0) > 0.0:
             base = float(problem_conf.get("w_soft_friction", 0.0))
-            cost_sliders["w_soft_friction"] = (base, _add_weight_slider("w_soft_friction"))
+            cost_sliders["w_soft_friction"] = (base, _add_weight_slider("w_soft_friction"), "exp20")
         if problem_conf.get("w_soft_land", 0.0) > 0.0:
             base = float(problem_conf.get("w_soft_land", 0.0))
-            cost_sliders["w_soft_land"] = (base, _add_weight_slider("w_soft_land"))
+            cost_sliders["w_soft_land"] = (base, _add_weight_slider("w_soft_land"), "exp20")
 
     # Joint position weights (first three)
     w_jointpos_base = problem_conf.get("w_jointpos_base", [0.0, 0.0, 0.0, 0.0])
@@ -1249,11 +1259,11 @@ def main() -> None:
     cost_text_color = [0.9, 0.9, 0.9]
     for idx, key in enumerate(cost_text_keys):
         if key in cost_sliders:
-            base, slider = cost_sliders[key]
+            base, slider, mode = cost_sliders[key]
+            weight = _weight_from_slider(base, slider, mode)
         else:
             base, slider = jointpos_sliders[key]
-        s = _read_slider_value(slider)
-        weight = float(base * _exp20_scale(s))
+            weight = _weight_from_slider(base, slider, "exp20")
         text = f"{key} = {weight:.6g}"
         pos = (cost_text_origin + idx * cost_text_step).tolist()
         cost_text_ids[key] = p.addUserDebugText(text, pos, textColorRGB=cost_text_color, textSize=1.2)
@@ -1573,11 +1583,8 @@ def main() -> None:
                 if ang_d_head_id != -1:
                     p.resetBasePositionAndOrientation(ang_d_head_id, end, [0, 0, 0, 1])
 
-        for key, (base, slider) in cost_sliders.items():
-            s = _read_slider_value(slider)
-            weight = float(base * _exp20_scale(s))
-            if not np.isfinite(weight) or weight < 0.0:
-                weight = 0.0
+        for key, (base, slider, mode) in cost_sliders.items():
+            weight = _weight_from_slider(base, slider, mode)
             problem_conf[key] = weight
             if key in cost_text_ids:
                 text = f"{key} = {weight:.6g}"
@@ -1596,10 +1603,7 @@ def main() -> None:
             if key not in jointpos_sliders:
                 continue
             base, slider = jointpos_sliders[key]
-            s = _read_slider_value(slider)
-            weight = float(base * _exp20_scale(s))
-            if not np.isfinite(weight) or weight < 0.0:
-                weight = 0.0
+            weight = _weight_from_slider(base, slider, "exp20")
             if i < len(w_jointpos):
                 w_jointpos[i] = weight
             if key in cost_text_ids:
@@ -1802,13 +1806,11 @@ def main() -> None:
             all_slider_keys = sorted(list(cost_sliders.keys()) + list(jointpos_sliders.keys()))
             for key in all_slider_keys:
                 if key in cost_sliders:
-                    base, slider = cost_sliders[key]
+                    base, slider, mode = cost_sliders[key]
+                    weight = _weight_from_slider(base, slider, mode)
                 else:
                     base, slider = jointpos_sliders[key]
-                s = _read_slider_value(slider)
-                weight = float(base * _exp20_scale(s))
-                if not np.isfinite(weight) or weight < 0.0:
-                    weight = 0.0
+                    weight = _weight_from_slider(base, slider, "exp20")
                 weight_rows.append(f"{key}={weight:.6g}")
             if weight_rows:
                 print("  weights=" + ", ".join(weight_rows))
@@ -1975,11 +1977,12 @@ def main() -> None:
         all_slider_keys = sorted(list(cost_sliders.keys()) + list(jointpos_sliders.keys()))
         for key in all_slider_keys:
             if key in cost_sliders:
-                base, slider = cost_sliders[key]
+                base, slider, mode = cost_sliders[key]
+                weight = _weight_from_slider(base, slider, mode)
             else:
                 base, slider = jointpos_sliders[key]
-            s = _read_slider_value(slider)
-            cost_vals.append(round(float(base * _exp20_scale(s)), 6))
+                weight = _weight_from_slider(base, slider, "exp20")
+            cost_vals.append(round(weight, 6))
         cmd = (round(vx_cmd, 6), round(wz_cmd, 6), *cost_vals)
         if cmd != last_cmd:
             last_cmd = cmd

@@ -1,0 +1,12 @@
+radius,weight,metric
+0.0,17000.0,yaw_err_abs
+0.375,1000.0,yaw_err_abs
+0.375,12000.0,yaw_err_abs
+0.375,13000.0,yaw_err_abs
+0.375,19000.0,yaw_err_abs
+0.375,20000.0,yaw_err_abs
+0.75,17000.0,yaw_err_abs
+1.125,13000.0,yaw_err_abs
+1.125,15000.0,yaw_err_abs
+1.125,20000.0,yaw_err_abs
+1.5,1000.0,yaw_err_abs

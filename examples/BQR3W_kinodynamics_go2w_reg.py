@@ -74,18 +74,23 @@ fref = np.zeros(force_size)
 fref[2] = -model_handler.getMass() / nk * gravity[2]
 u0 = np.concatenate((fref, fref, fref, fref, np.zeros(model_handler.getModel().nv - 6)))
 dt_mpc = 0.01
-TARGET_INTEGRATION_T = 1.0  # seconds (MPC horizon time)
+TARGET_INTEGRATION_T = 1.0
+ENABLE_ICR_ARC_REF = False
+ICR_ARC_POS_WEIGHT = 50.0
 
-w_basepos = [0, 0, 0, 0.0, 1000.0, 0]
-w_jointpos = [10.1, 10.1, 10.1, 0.0]
-w_basevel = [20, 20, 10, 10, 10, 20]
-w_jointvel = [0.1, 0.1, 0.1, 0.0]
+if ENABLE_ICR_ARC_REF:
+    w_basepos = [ICR_ARC_POS_WEIGHT, ICR_ARC_POS_WEIGHT, 1, 0.0, 1000.0, 1000]
+else:
+    w_basepos = [1, 1, 1, 9000.0, 9000.0, 1000]
+w_jointpos = [1879.64, 249.799, 220.196, 0.0]
+w_basevel = [0, 0, 0, 10, 10, 20]
+w_jointvel = [0.1, 0.1, 0.1, 0.1]
 
 # Terminal weights (separate from stage weights)
-w_basepos_T = [10000, 10000, 10000, 10000.0, 10000.0, 100000]
-w_jointpos_T = [1000.1, 1000.1, 1000.1, 1000.0]
-w_basevel_T = [10, 10, 10, 10, 10, 10]
-w_jointvel_T = [0.1, 0.1, 0.1, 0.0]
+w_basepos_T = [100000, 100000, 30000, 9000.0, 9000.0, 100000]
+w_jointpos_T = [1879.64, 249.799, 220.196, 0.0]
+w_basevel_T = [100, 100, 10, 10, 10, 100]
+w_jointvel_T = [0.1, 0.1, 0.1, 0.1]
 model = model_handler.getModel()
 wheel_joints = [
     "FL_wheel_joint",
@@ -99,7 +104,7 @@ wheel_u_indices = []
 wheel_meas_indices = []
 wheel_vel_limit = 3.0 * 100.0 * 2.0 * np.pi / 60.0
 wheel_target_vel = 10.0 * 2.0 * np.pi / 60.0
-wheel_radius = 0.125
+wheel_radius = 0.1015
 joint_names_complete = list(model.names)[2:]
 for joint_name in wheel_joints:
     joint_id = model.getJointId(joint_name)
@@ -128,7 +133,7 @@ w_v_T[:6] = w_basevel_T
 w_q_T[6:] = np.resize(np.tile(w_jointpos_T, 4), w_q_T[6:].shape[0])
 w_v_T[6:] = np.resize(np.tile(w_jointvel_T, 4), w_v_T[6:].shape[0])
 w_x_T = np.diag(np.concatenate((w_q_T, w_v_T)))
-w_linforce = np.array([0.1, 0.1, 0.1])
+w_linforce = np.array([0.01, 0.01, 0.01])
 w_u_joints = np.ones(model.nv - 6) * 1e-5
 for joint_name in wheel_joints:
     joint_id = model.getJointId(joint_name)
@@ -136,7 +141,6 @@ for joint_name in wheel_joints:
     nv_joint = model.joints[joint_id].nv
 w_u = np.concatenate((w_linforce, w_linforce, w_linforce, w_linforce, w_u_joints))
 w_u = np.diag(w_u)
-w_LFRF = 6000
 w_cent_lin = np.array([0.0, 0.0, 1])
 w_cent_ang = np.array([0.0, 0.1, 10])
 w_cent = np.diag(np.concatenate((w_cent_lin, w_cent_ang)))
@@ -177,17 +181,17 @@ problem_conf = dict(
     lateral_no_slip_min_axis_norm=1e-12,
     lateral_no_slip_min_cross_norm=1e-8,
     use_vector_glide_cost=True,
-    vector_glide_weight=1000.0,
-    vector_glide_weight_base=1000.0,
+    vector_glide_weight=5000.0,
+    vector_glide_weight_base=10992.2,
     vector_glide_disable_on_twist=True,
     vector_glide_min_omega=1e-6,
     min_wheel_distance_cstr=False,
     min_wheel_distance=1.2 * 2.0 * wheel_radius,
-    min_wheel_distance_cost=False,
+    min_wheel_distance_cost=True,
     w_min_wheel_distance=0.05,
     min_wheel_distance_cost_eps=1e-3,
     force_z_variance_cost=False,
-    w_force_z_variance=10.0,
+    w_force_z_variance=3.0,
     joint_limit_soft_cost=False,
     w_joint_limit_soft=2.0,
     joint_limit_soft_fraction=0.5,
@@ -195,45 +199,47 @@ problem_conf = dict(
     w_soft_contact_vel=20.0,
     w_soft_friction=0.0,
     w_soft_land=0.0,
-    track_width_cstr=False,
-    w_track_width=w_LFRF,
+    track_width_cstr=True,
+    w_track_width=6000,
     foot_sum_cstr=False,
-    w_foot_sum=w_LFRF,
+    w_foot_sum=6000,
     foot_sum_z_offset=wheel_radius,
     wheel_axle_height_cstr=True,
     wheel_axle_height_min=0.9 * wheel_radius,
     wheel_axle_height_max=1.1 * wheel_radius,
+    w_jointpos_base=w_jointpos,
+    w_jointpos_T_base=w_jointpos_T,
+    icr_arc_cstr=True,
+    icr_arc_min_omega=1e-6,
+    icr_arc_max_radius=100.0,
+    w_hip_sum=1937.92,
+    w_icr_axle=56.7218,
+    hip_joint_names=[
+        "FR_hip_joint",
+        "RR_hip_joint",
+        "FL_hip_joint",
+        "RL_hip_joint",
+    ],
 )
 horizon_T = int(round(TARGET_INTEGRATION_T / dt_mpc))
-
-# Update wheel axle height range using the reference pose
-data_init = pin.Data(model)
-ref_state = model_handler.getReferenceState()
-pin.forwardKinematics(model, data_init, ref_state[:nq], ref_state[nq:])
-pin.updateFramePlacements(model, data_init)
-wheel_link_names = ["FL_wheel", "FR_wheel", "RL_wheel", "RR_wheel"]
-foot_axis_z_world = {}
-for name in wheel_link_names:
-    fid = model_handler.getFootFrameId(model_handler.getFootNb(name))
-    foot_axis_z_world[name] = float(data_init.oMf[fid].translation[2])
-avg_axle_height = float(np.mean(list(foot_axis_z_world.values()))) if foot_axis_z_world else 0.0
-problem_conf["wheel_axle_height_min"] = 0.9 * avg_axle_height
-problem_conf["wheel_axle_height_max"] = 1.1 * avg_axle_height
 
 dynproblem = KinodynamicsOCP(problem_conf, model_handler)
 dynproblem.createProblem(
     model_handler.getReferenceState(), horizon_T, force_size, gravity[2], False
 )
 
+T_ds = 10
+T_ss = 30
+
 mpc_conf = dict(
     support_force=-model_handler.getMass() * gravity[2],
     TOL=1e-4,
     mu_init=1e-8,
-    max_iters=5,
+    max_iters=20,
     num_threads=8,
     swing_apex=0.15,
-    T_fly=30,
-    T_contact=10,
+    T_fly=T_ss,
+    T_contact=T_ds,
     timestep=dt_mpc,
     update_contact_ref=True,
 )
@@ -286,8 +292,7 @@ interpolator = Interpolator(model_handler.getModel())
 kino_ID_settings = KinodynamicsIDSettings()
 kino_ID_settings.kp_base = 15.0
 kino_ID_settings.kp_posture = 30.0
-kino_ID_settings.kp_contact = 0
-.0
+kino_ID_settings.kp_contact = 0.0
 kino_ID_settings.w_base = 100.0
 kino_ID_settings.w_posture = 10.0
 kino_ID_settings.w_contact_force = 1.0
@@ -364,6 +369,137 @@ def _update_ghost(robot_id, local_inertia_pos, joint_indices, q_ref_full):
         p.resetJointState(robot_id, j_idx, q_ref_full[7 + i])
 
 
+def quat_from_rpy(roll: float, pitch: float, yaw: float) -> np.ndarray:
+    R = pin.rpy.rpyToMatrix(roll, pitch, yaw)
+    return pin.Quaternion(R).coeffs()
+
+
+def update_vector_glide_weight(problem_conf, model_handler, x_measured, yaw_rate, wheel_link_names):
+    if not problem_conf.get("vector_glide_disable_on_twist", False):
+        return
+    if abs(yaw_rate) <= 0.0:
+        problem_conf["vector_glide_weight"] = problem_conf.get("vector_glide_weight_base", 0.0)
+        return
+    model = model_handler.getModel()
+    nq = model.nq
+    data = pin.Data(model)
+    q0 = np.asarray(x_measured[:nq]).copy()
+    v0 = np.asarray(x_measured[nq:]).copy()
+    pin.forwardKinematics(model, data, q0, v0)
+    pin.updateFramePlacements(model, data)
+    base_fid = model_handler.getBaseFrameId()
+    base_pose = data.oMf[base_fid]
+    Rb = base_pose.rotation
+    pb = base_pose.translation
+
+    def foot_pos(name):
+        fid = model_handler.getFootFrameId(model_handler.getFootNb(name))
+        pw = data.oMf[fid].translation.copy()
+        return Rb.T @ (pw - pb)
+
+    fl = foot_pos("FL_wheel")
+    fr = foot_pos("FR_wheel")
+    rl = foot_pos("RL_wheel")
+    rr = foot_pos("RR_wheel")
+
+    front_avg = 0.5 * (fl + fr)
+    rear_avg = 0.5 * (rl + rr)
+    front_left_of_rear = front_avg[1] < rear_avg[1]
+    front_right_of_rear = front_avg[1] > rear_avg[1]
+
+    disable = (yaw_rate > 0.0 and front_left_of_rear) or (yaw_rate < 0.0 and front_right_of_rear)
+    if disable:
+        problem_conf["vector_glide_weight"] = 0.0
+    else:
+        problem_conf["vector_glide_weight"] = problem_conf.get("vector_glide_weight_base", 0.0)
+
+
+def build_arc_reference_states(q_meas, vx_cmd: float, wz_cmd: float, horizon_T: int, dt: float, yaw_override=None):
+    refs = []
+    R0 = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
+    roll0, pitch0, yaw0 = pin.rpy.matrixToRpy(R0)
+    if yaw_override is not None:
+        yaw0 = float(yaw_override)
+    base_xyz0 = np.asarray(q_meas[:3]).copy()
+    cy_local = np.cos(yaw0)
+    sy_local = np.sin(yaw0)
+    for t_idx in range(horizon_T):
+        t = t_idx * dt
+        if abs(wz_cmd) < 1e-6:
+            dx_local = vx_cmd * t
+            dy_local = 0.0
+        else:
+            R_local = vx_cmd / wz_cmd
+            dtheta_local = wz_cmd * t
+            dx_local = R_local * np.sin(dtheta_local)
+            dy_local = R_local * (1.0 - np.cos(dtheta_local))
+        dx_world = cy_local * dx_local - sy_local * dy_local
+        dy_world = sy_local * dx_local + cy_local * dy_local
+        q_ref = model_handler.getReferenceState()[:nq].copy()
+        q_ref[0] = base_xyz0[0] + dx_world
+        q_ref[1] = base_xyz0[1] + dy_world
+        q_ref[2] = base_xyz0[2]
+        yaw_ref = yaw0 + wz_cmd * t
+        q_ref[3:7] = quat_from_rpy(roll0, pitch0, yaw_ref)
+        q_ref[7:] = q_meas[7:]
+        x_ref = model_handler.getReferenceState().copy()
+        x_ref[:nq] = q_ref
+        x_ref[nq:] = 0.0
+        refs.append(x_ref)
+    return refs
+
+
+def compute_icr_arc_params(vx_cmd: float, wz_cmd: float, yaw0: float) -> np.ndarray:
+    min_omega = float(problem_conf.get("icr_arc_min_omega", 1e-6))
+    if abs(wz_cmd) < min_omega:
+        return np.array([0.0, 0.0, 0.0, 0.0])
+    max_radius = float(problem_conf.get("icr_arc_max_radius", 100.0))
+    R_local = vx_cmd / wz_cmd
+    if max_radius > 0.0 and abs(R_local) > max_radius:
+        return np.array([0.0, 0.0, 0.0, 0.0])
+    cy_local = np.cos(yaw0)
+    sy_local = np.sin(yaw0)
+    cx = -sy_local * R_local
+    cy = cy_local * R_local
+    return np.array([cx, cy, R_local, 1.0])
+
+
+def compute_mpc_reference(q_meas, vx_cmd: float, wz_cmd: float, yaw_override=None):
+    R0 = pin.Quaternion(q_meas[3:7]).toRotationMatrix()
+    roll0, pitch0, yaw0 = pin.rpy.matrixToRpy(R0)
+    if yaw_override is not None:
+        yaw0 = float(yaw_override)
+    base_xyz0 = np.asarray(q_meas[:3]).copy()
+    if abs(wz_cmd) < 1e-6:
+        dx_local = vx_cmd * TARGET_INTEGRATION_T
+        dy_local = 0.0
+    else:
+        R_local = vx_cmd / wz_cmd
+        dtheta_local = wz_cmd * TARGET_INTEGRATION_T
+        dx_local = R_local * np.sin(dtheta_local)
+        dy_local = R_local * (1.0 - np.cos(dtheta_local))
+    cy_local = np.cos(yaw0)
+    sy_local = np.sin(yaw0)
+    delta_world = np.array(
+        [cy_local * dx_local - sy_local * dy_local, sy_local * dx_local + cy_local * dy_local]
+    )
+
+    v_world_cmd_local = np.zeros(6)
+    v_world_cmd_local[0] = vx_cmd * np.cos(yaw0)
+    v_world_cmd_local[1] = vx_cmd * np.sin(yaw0)
+    v_world_cmd_local[5] = wz_cmd
+
+    q_term_local = model_handler.getReferenceState()[:nq].copy()
+    q_term_local[0] = base_xyz0[0] + delta_world[0]
+    q_term_local[1] = base_xyz0[1] + delta_world[1]
+    q_term_local[2] = base_xyz0[2]
+    yaw_term_local = yaw0 + wz_cmd * TARGET_INTEGRATION_T
+    q_term_local[3:7] = quat_from_rpy(roll0, pitch0, yaw_term_local)
+    q_term_local[7:] = q_meas[7:]
+
+    return v_world_cmd_local, q_term_local, yaw0
+
+
 terminal_robot_id, terminal_local_inertia_pos, terminal_joint_indices = _spawn_ghost([0.95, 0.5, 0.2, 0.35])
 geo_robot_id, geo_local_inertia_pos, geo_joint_indices = _spawn_ghost([0.2, 0.7, 0.95, 0.35])
 
@@ -392,6 +528,18 @@ v_world_cmd[:3] = R_yaw @ v_body_cmd[:3]
 v_world_cmd[3:6] = R_yaw @ v_body_cmd[3:6]
 mpc.velocity_base = v_world_cmd
 x_measured = np.concatenate([q_meas, v_meas])
+
+data_init = pin.Data(model)
+pin.forwardKinematics(model, data_init, q_meas, v_meas)
+pin.updateFramePlacements(model, data_init)
+foot_axis_z_world = {}
+for name in ["FL_wheel", "FR_wheel", "RL_wheel", "RR_wheel"]:
+    fid = model_handler.getFootFrameId(model_handler.getFootNb(name))
+    foot_axis_z_world[name] = float(data_init.oMf[fid].translation[2])
+if foot_axis_z_world:
+    avg_axle_height = float(np.mean(list(foot_axis_z_world.values())))
+    problem_conf["wheel_axle_height_min"] = 0.9 * avg_axle_height
+    problem_conf["wheel_axle_height_max"] = 1.1 * avg_axle_height
 
 device.showQuadrupedFeet(
     mpc.getDataHandler().getFootPose(mpc.getModelHandler().getFootNb("FL_wheel")),
@@ -473,11 +621,9 @@ for step in range(300000):
     yaw_accum += dyaw
     last_yaw = yaw
     yaw_use = yaw_accum
+    x_measured = np.concatenate([q_meas, v_meas])
 
-    v_world_cmd[:] = 0.0
-    v_world_cmd[0] = v_body_cmd[0] * np.cos(yaw_use)
-    v_world_cmd[1] = v_body_cmd[0] * np.sin(yaw_use)
-    v_world_cmd[5] = v_body_cmd[5]
+    v_world_cmd, q_term, yaw_ref = compute_mpc_reference(q_meas, v_body_cmd[0], v_body_cmd[5], yaw_override=yaw_use)
     mpc.velocity_base = v_world_cmd
     print("base q", q_meas[:7])
     print("yaw(deg)", yaw_use * 180.0 / np.pi)
@@ -485,33 +631,27 @@ for step in range(300000):
     print("cmd yaw-only world", v_world_cmd)
     wheel_target_vel = v_body_cmd[0] / wheel_radius
 
-    # Terminal target: use geometry solver q, set v = 0
-    geo_term = geo_solver.solve(v_body_cmd[0], v_body_cmd[5], yaw=current_ref_yaw)
-    q_term = model_handler.getReferenceState()[:nq].copy()
-    q_term[0] = current_ref_pos_x
-    q_term[1] = current_ref_pos_y
-    q_term[2] = initial_height
-    q_roll = geo_term.roll
-    q_pitch = geo_term.pitch
-    q_yaw = current_ref_yaw
-    qx = np.sin(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.cos(q_yaw * 0.5) - np.cos(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
-    qy = np.cos(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.cos(q_yaw * 0.5) + np.sin(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
-    qz = np.cos(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.sin(q_yaw * 0.5) - np.sin(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.cos(q_yaw * 0.5)
-    qw = np.cos(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.sin(q_yaw * 0.5) + np.cos(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.cos(q_yaw * 0.5)
-    q_term[3] = qx
-    q_term[4] = qy
-    q_term[5] = qz
-    q_term[6] = qw
-
-    hip_joint_indices = [7, 10, 13, 16]
-    for i, idx in enumerate(hip_joint_indices):
-        if idx < q_term.shape[0]:
-            q_term[idx] += geo_term.toe_offsets[i]
+    if problem_conf.get("use_vector_glide_cost", False):
+        update_vector_glide_weight(problem_conf, model_handler, x_measured, v_world_cmd[5], wheel_link_names)
+    if problem_conf.get("icr_arc_cstr", False):
+        icr_params = compute_icr_arc_params(v_body_cmd[0], v_body_cmd[5], yaw_ref)
+        try:
+            mpc.ocp_handler.setIcrArcParams(icr_params)
+        except Exception:
+            pass
 
     x_term = model_handler.getReferenceState().copy()
     x_term[:nq] = q_term
     x_term[nq:] = 0.0
-    mpc.ocp_handler.setTerminalReferenceState(x_term)
+    if ENABLE_ICR_ARC_REF:
+        refs = build_arc_reference_states(q_meas, v_body_cmd[0], v_body_cmd[5], horizon_T, dt_mpc, yaw_override=yaw_use)
+        for t_idx, x_ref in enumerate(refs):
+            mpc.ocp_handler.setReferenceState(t_idx, x_ref)
+        mpc.ocp_handler.setTerminalReferenceState(refs[-1])
+    else:
+        for t_idx in range(horizon_T):
+            mpc.ocp_handler.setReferenceState(t_idx, x_term)
+        mpc.ocp_handler.setTerminalReferenceState(x_term)
     _update_ghost(geo_robot_id, geo_local_inertia_pos, geo_joint_indices, q_term)
 
     # Keyboard control: 'p' toggle pause, 'n' single-step

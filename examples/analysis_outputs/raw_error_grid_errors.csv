@@ -1,0 +1,7 @@
+radius,weight,use_vector_glide_cost,error
+0.0,4000.0,True,RuntimeError('/home/conda/feedstock_root/build_artifacts/aligator_1768815897448/work/include/aligator/solvers/proxddp/merit-function.hxx(95): Encountered NaN for variable dxs[1]\n')
+0.375,15000.0,True,RuntimeError('/home/conda/feedstock_root/build_artifacts/aligator_1768815897448/work/include/aligator/solvers/proxddp/merit-function.hxx(91): Encountered NaN.\n')
+0.75,0.0,False,RuntimeError('/home/conda/feedstock_root/build_artifacts/aligator_1768815897448/work/include/aligator/solvers/proxddp/merit-function.hxx(91): Encountered NaN.\n')
+0.75,19000.0,True,RuntimeError('/home/conda/feedstock_root/build_artifacts/aligator_1768815897448/work/include/aligator/solvers/proxddp/merit-function.hxx(91): Encountered NaN.\n')
+1.125,5000.0,True,RuntimeError('/home/conda/feedstock_root/build_artifacts/aligator_1768815897448/work/include/aligator/solvers/proxddp/merit-function.hxx(91): Encountered NaN.\n')
+1.125,17000.0,True,RuntimeError('/home/conda/feedstock_root/build_artifacts/aligator_1768815897448/work/include/aligator/solvers/proxddp/merit-function.hxx(91): Encountered NaN.\n')

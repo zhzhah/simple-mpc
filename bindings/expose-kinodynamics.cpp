@@ -220,7 +220,8 @@ namespace simple_mpc::python
       .def("getSettings", &getSettingsKino)
       .def("createStage", &createKinoStage)
       .def("setIcrArcParams", &KinodynamicsOCP::setIcrArcParams, ("self"_a, "icr_params"))
-      .def("getIcrArcParams", &KinodynamicsOCP::getIcrArcParams, "self"_a);
+      .def("getIcrArcParams", &KinodynamicsOCP::getIcrArcParams, "self"_a)
+      .def("setVectorGlideWeight", &KinodynamicsOCP::setVectorGlideWeight, ("self"_a, "weight"));
   }
 
 } // namespace simple_mpc::python

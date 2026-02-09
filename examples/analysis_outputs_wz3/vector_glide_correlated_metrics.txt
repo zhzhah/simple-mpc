@@ -1,0 +1,5 @@
+metric	rho	p
+pos_err	-0.404453	0.0106558
+yaw_err	-0.563765	0.000185964
+vel_err	-0.548583	0.000299357
+joint_violation_frac	-0.659109	5.05261e-06

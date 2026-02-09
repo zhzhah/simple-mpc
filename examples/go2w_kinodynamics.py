@@ -79,7 +79,7 @@ w_basepos = [0, 0, 100, 20.0, 20.0, 0]
 w_legpos = [10.1, 10.1, 10.1]
 
 w_basevel = [10, 10, 10, 10, 10, 10]
-w_legvel = [1.1, 1.1, 1.1]
+w_legvel = [10.1, 10.1, 10.1]
 model = model_handler.getModel()
 wheel_joints = [
     "FL_wheel_joint",
@@ -166,8 +166,8 @@ problem_conf = dict(
     enable_lateral_no_slip=True,
     lateral_no_slip_min_axis_norm=1e-12,
     lateral_no_slip_min_cross_norm=1e-8,
-    use_vector_glide_cost=True,
-    vector_glide_weight=100.0,
+    use_vector_glide_cost=False,
+    vector_glide_weight=1000.0,
     vector_glide_min_omega=1e-6,
     min_wheel_distance_cstr=False,
     min_wheel_distance=1.2 * 2.0 * wheel_radius,
@@ -591,17 +591,17 @@ for step in range(300000):
         current_ref_pos_x += v_world_x * dt_simu
         current_ref_pos_y += v_world_y * dt_simu
 
-        v_interp[:6] = 0.0
-        v_interp[0] = v_world_x
-        v_interp[1] = v_world_y
-        v_interp[2] = 0.0
-        v_interp[3] = 0.0
-        v_interp[4] = 0.0
-        v_interp[5] = user_w_cmd
+        # v_interp[:6] = 0.0
+        # v_interp[0] = v_world_x
+        # v_interp[1] = v_world_y
+        # v_interp[2] = 0.0
+        # v_interp[3] = 0.0
+        # v_interp[4] = 0.0
+        # v_interp[5] = user_w_cmd
 
-        q_interp[0] = current_ref_pos_x
-        q_interp[1] = current_ref_pos_y
-        q_interp[2] = initial_height
+        # q_interp[0] = current_ref_pos_x
+        # q_interp[1] = current_ref_pos_y
+        # q_interp[2] = initial_height
         geo = geo_solver.solve(user_v_cmd, user_w_cmd, yaw=current_ref_yaw)
         q_roll = geo.roll
         q_pitch = geo.pitch
@@ -610,10 +610,10 @@ for step in range(300000):
         qy = np.cos(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.cos(q_yaw * 0.5) + np.sin(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
         qz = np.cos(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.sin(q_yaw * 0.5) - np.sin(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.cos(q_yaw * 0.5)
         qw = np.cos(q_roll * 0.5) * np.cos(q_pitch * 0.5) * np.cos(q_yaw * 0.5) + np.sin(q_roll * 0.5) * np.sin(q_pitch * 0.5) * np.sin(q_yaw * 0.5)
-        q_interp[3] = qx
-        q_interp[4] = qy
-        q_interp[5] = qz
-        q_interp[6] = qw
+        # q_interp[3] = qx
+        # q_interp[4] = qy
+        # q_interp[5] = qz
+        # q_interp[6] = qw
 
         # Optional: apply toe offsets to hip joints (verify indices for your URDF)
         hip_joint_indices = [7, 10, 13, 16]
